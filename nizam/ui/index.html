@@ -295,13 +295,14 @@ async function renameAgent(root) {
 function openCtx(x, y, root) {
   const a = agentOf(root); if (!a) return;
   const c = $('#ctx');
-  c.innerHTML = `<div data-do="rename">Rename…</div><div data-do="pin">${a.pinned ? 'Unpin' : 'Pin to top'}</div><div data-do="top">Move to top</div><div data-do="new">New session here</div>`;
+  c.innerHTML = `<div data-do="rename">Rename…</div><div data-do="pin">${a.pinned ? 'Unpin' : 'Pin to top'}</div><div data-do="top">Move to top</div><div data-do="new">New session here</div><div data-do="new-opts">New session with options…</div>`;
   c.style.left = Math.min(x, window.innerWidth - 180) + 'px'; c.style.top = y + 'px';
   c.classList.add('open');
   c.querySelectorAll('[data-do]').forEach(el => el.addEventListener('click', async () => {
     c.classList.remove('open');
     if (el.dataset.do === 'rename') return renameAgent(root);
-    if (el.dataset.do === 'new') return openModal(root, '');
+    if (el.dataset.do === 'new-opts') return openModal(root, '');
+    if (el.dataset.do === 'new') return quickStart(root, '');
     if (el.dataset.do === 'pin') await api('/api/agents/set', {root, pinned: !a.pinned});
     if (el.dataset.do === 'top') await api('/api/agents/order', {roots: [root, ...DATA.agents.map(z => z.root).filter(z => z !== root)]});
     refresh(true);
@@ -313,7 +314,7 @@ document.addEventListener('click', e => { if (!e.target.closest('#ctx')) $('#ctx
 function renderList() {
   const agent = agentOf(SEL.agent);
   const list = currentList();
-  let h = `<div class="head"><h2><span class="t">${agent ? esc(agent.display_name) : 'Everything'}</span><span class="n">${list.length}</span><button class="quiet" style="padding:2px 8px;font-size:12px" data-clear="1" title="Mark every exited 'Your turn' session here as done">Clear</button><button class="primary" style="padding:2px 8px;font-size:12px" data-newhere="1">＋ New${agent?' here':''}</button></h2>`;
+  let h = `<div class="head"><h2><span class="t">${agent ? esc(agent.display_name) : 'Everything'}</span><span class="n">${list.length}</span><button class="quiet" style="padding:2px 8px;font-size:12px" data-clear="1" title="Mark every exited 'Your turn' session here as done">Clear</button><button class="primary" style="padding:2px 8px;font-size:12px" data-newhere="1" title="Start a session here now · ⌥-click for options">＋ New${agent?' here':''}</button></h2>`;
   h += `<div class="chips"><span class="chip agentchip ${!SEL.agent?'on':''}" data-agent="">All</span>` + sortedAgents().filter(a => visible(byAgent(a.root)).length).map(a => `<span class="chip agentchip ${SEL.agent===a.root?'on':''}" data-agent="${esc(a.root)}">${esc(a.display_name)}</span>`).join('');
   if (agent && agent.areas.length) {
     h += `<span class="chip ${!SEL.area?'on':''}" data-ar="">all areas</span>` + agent.areas.map(ar => {
@@ -333,7 +334,8 @@ function renderList() {
   el.querySelectorAll('[data-ar]').forEach(c => c.addEventListener('click', () => { SEL.area = c.dataset.ar || null; save('sel', SEL); render(); }));
   el.querySelectorAll('[data-agent]').forEach(c => c.addEventListener('click', () => { SEL = {agent: c.dataset.agent || null, area: null}; save('sel', SEL); CUR = null; render(); }));
   el.querySelectorAll('[data-id]').forEach(c => c.addEventListener('click', () => { CUR = c.dataset.id; detailOpen = true; render(); }));
-  el.querySelector('[data-newhere]').addEventListener('click', () => openModal(SEL.agent, SEL.area));
+  el.querySelector('[data-newhere]').addEventListener('click', e => SEL.agent ? newHere(e, SEL.agent, SEL.area) : openModal());
+  el.querySelector('[data-newhere]').addEventListener('contextmenu', e => { e.preventDefault(); openModal(SEL.agent, SEL.area); });
   el.querySelector('[data-clear]').addEventListener('click', async () => {
     const n = list.filter(s => s.bucket === 'inbox' && !s.live).length;
     if (!n) { toast('Nothing to clear: live sessions stay'); return; }
@@ -359,12 +361,13 @@ function renderDetail() {
     <div class="meta"><b>${esc(s.agent_name)}</b>${s.area?` › ${esc(s.area)}`:''} · <span class="ago">${esc(s.ago)}</span> ago ${s.live?'<span class="tag live">live</span>':'<span class="tag">exited</span>'}${s.question?'<span class="tag q">asks something</span>':''}${(!s.hooked && s.live)?'<span class="tag" title="No hook events yet; state inferred from the transcript">inferred</span>':''}</div>
     <div class="state ${s.bucket}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span>${esc(s.label)}</div>
     ${s.detail ? `<div class="why">${esc(s.detail)}</div>` : ''}
-    <div class="actions"><button class="primary" data-act="open">${s.live?'Jump to':'Resume'}</button>${doneBtn}<button data-newhere="1">＋ New here</button></div>
+    <div class="actions"><button class="primary" data-act="open">${s.live?'Jump to':'Resume'}</button>${doneBtn}<button data-newhere="1" title="Start a session here now · ⌥-click for options">＋ New here</button></div>
     <div class="msg">${esc(s.preview || '(no reply yet)')}</div>
     ${s.last_prompt ? `<div class="prompt">You: ${esc(s.last_prompt)}</div>` : ''}
     <div class="path">${esc(s.cwd)}</div>`;
   d.querySelectorAll('[data-act]').forEach(el => el.addEventListener('click', async () => { await api(`/api/sessions/${s.id}/${el.dataset.act}`, {}); refresh(true); }));
-  d.querySelector('[data-newhere]').addEventListener('click', () => openModal(s.agent, s.area || ''));
+  d.querySelector('[data-newhere]').addEventListener('click', e => newHere(e, s.agent, s.area || ''));
+  d.querySelector('[data-newhere]').addEventListener('contextmenu', e => { e.preventDefault(); openModal(s.agent, s.area || ''); });
   d.querySelector('h1 .t').addEventListener('click', async () => {
     const name = await ask('Session title', s.title, 'Empty restores the automatic title');
     if (name === null) return;
@@ -387,9 +390,22 @@ function ask(title, value, hint) {
     inp.addEventListener('keydown', onKey); $('#askOk').addEventListener('click', onOk); $('#askCancel').addEventListener('click', onCancel); m.addEventListener('click', onBg);
   });
 }
-function toast(msg) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3500); }
+function toast(msg, ok) { const t = $('#toast'); t.textContent = msg; t.style.background = ok ? 'var(--inbox)' : 'var(--needs)'; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3500); }
 
 /* ---------- new session ---------- */
+async function quickStart(agentRoot, areaRel) {
+  const a = agentOf(agentRoot); if (!a) return openModal(agentRoot, areaRel);
+  const last = DATA.prefs.last_start || {};
+  const cwd = areaRel ? a.root + '/' + areaRel : a.root;
+  const r = await api('/api/start', {cwd, prompt: '', permission_mode: last.permission_mode || 'acceptEdits', worktree: false, paste: false});
+  if (r.error) { toast(r.error); return; }
+  toast(`Started in ${a.display_name}${areaRel ? ' › ' + areaRel : ''}`, true);
+  setTimeout(() => refresh(true), 1500);
+}
+function newHere(e, agentRoot, areaRel) {
+  if (e && (e.altKey || e.metaKey || e.button === 2)) return openModal(agentRoot, areaRel);
+  return quickStart(agentRoot, areaRel);
+}
 function openModal(agentRoot, areaRel) {
   const sel = $('#mAgent');
   sel.innerHTML = sortedAgents().map(a => `<option value="${esc(a.root)}">${esc(a.display_name)}  (${esc(a.display)})</option>`).join('');
