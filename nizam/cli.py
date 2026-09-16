@@ -112,6 +112,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("doctor", help="check wiring")
     a = p.parse_args(argv)
     if a.cmd == "serve":
+        from .terminal import clean_env
+        if len(clean_env()) != len(os.environ):
+            # Re-exec so nothing spawned later inherits a Claude session's markers.
+            os.execve(sys.executable, [sys.executable, "-m", "nizam", *sys.argv[1:]], clean_env())
         from .server import serve
         serve(a.port, a.open)
         return 0

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -14,6 +15,14 @@ _KNOWN_TERMINALS = (("Terminal.app", "Terminal"), ("iTerm", "iTerm"), ("Ghostty"
                     ("Hyper", "Hyper"), ("Tabby", "Tabby"), ("Warp", "Warp"))
 _DETACHED = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
              "stderr": subprocess.DEVNULL, "start_new_session": True, "close_fds": True}
+
+
+def clean_env() -> dict[str, str]:
+    """Environment without Claude Code's own markers. When Nizam itself was
+    started from inside a Claude session, a launched Terminal would inherit
+    CLAUDE_CODE_CHILD_SESSION and refuse to save transcripts."""
+    return {k: v for k, v in os.environ.items()
+            if not (k.startswith("CLAUDE") or k in ("AI_AGENT", "ENABLE_CLAUDEAI_MCP_SERVERS"))}
 _SAFE_ID = re.compile(r"^[0-9a-fA-F-]{8,64}$")
 
 
@@ -56,7 +65,8 @@ def _osascript(*lines: str) -> str:
     for l in lines:
         args += ["-e", l]
     try:
-        return subprocess.run(args, capture_output=True, text=True, timeout=10).stdout
+        return subprocess.run(args, capture_output=True, text=True, timeout=10,
+                              env=clean_env()).stdout
     except (OSError, subprocess.SubprocessError):
         return ""
 
@@ -106,7 +116,7 @@ return "missing"'''
 def focus(pid: int) -> bool:
     host = session_host(pid)
     if host["kind"] == "desktop":
-        subprocess.Popen(["open", "-a", "Claude"], **_DETACHED)
+        subprocess.Popen(["open", "-a", "Claude"], env=clean_env(), **_DETACHED)
         return True
     app = host.get("app")
     if app == "Terminal" and focus_terminal_tab(host["tty"]):
@@ -114,7 +124,7 @@ def focus(pid: int) -> bool:
     if app == "iTerm" and focus_iterm_tab(host["tty"]):
         return True
     if app:
-        subprocess.Popen(["open", "-a", app], **_DETACHED)
+        subprocess.Popen(["open", "-a", app], env=clean_env(), **_DETACHED)
         return True
     return False
 
@@ -131,7 +141,7 @@ def run_in_new_terminal(shell_cmd: str, paste_only: bool = False, launcher: str 
         # `-e` hands the rest of argv to Ghostty as the command; an
         # interactive zsh after it keeps the window open once claude exits.
         subprocess.Popen(["open", "-na", "Ghostty", "--args", "-e", "zsh", "-ic",
-                          shell_cmd + "; exec zsh -i"], **_DETACHED)
+                          shell_cmd + "; exec zsh -i"], env=clean_env(), **_DETACHED)
         return
     lit = json.dumps(shell_cmd, ensure_ascii=False)   # AppleScript shares JSON's escapes
     _osascript('tell application "Terminal" to activate',
