@@ -104,7 +104,7 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .detail .why { background: var(--needs-bg); padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; max-width: 820px; }
 .detail .actions { display: flex; gap: 8px; margin: 12px 0 14px; flex-wrap: wrap; }
 .detail .msg { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; white-space: pre-wrap; line-height: 1.55; max-width: 820px; overflow-wrap: anywhere; }
-.detail .prompt { margin-top: 14px; color: var(--muted); font-size: 12px; border-left: 3px solid var(--line); padding-left: 10px; white-space: pre-wrap; max-width: 820px; overflow-wrap: anywhere; }
+.detail .prompt { margin-bottom: 12px; color: var(--muted); font-size: 12px; border-left: 3px solid var(--line); padding-left: 10px; white-space: pre-wrap; max-width: 820px; overflow-wrap: anywhere; }
 .detail .path { margin-top: 18px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .detail .back { display: none; margin-bottom: 10px; }
 
@@ -362,8 +362,8 @@ function renderDetail() {
     <div class="state ${s.bucket}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span>${esc(s.label)}</div>
     ${s.detail ? `<div class="why">${esc(s.detail)}</div>` : ''}
     <div class="actions"><button class="primary" data-act="open">${s.live?'Jump to':'Resume'}</button>${doneBtn}<button data-newhere="1" title="Start a session here now · ⌥-click for options">＋ New here</button></div>
-    <div class="msg">${esc(s.preview || '(no reply yet)')}</div>
     ${s.last_prompt ? `<div class="prompt">You: ${esc(s.last_prompt)}</div>` : ''}
+    <div class="msg">${esc(s.preview || '(no reply yet)')}</div>
     <div class="path">${esc(s.cwd)}</div>`;
   d.querySelectorAll('[data-act]').forEach(el => el.addEventListener('click', async () => { await api(`/api/sessions/${s.id}/${el.dataset.act}`, {}); refresh(true); }));
   d.querySelector('[data-newhere]').addEventListener('click', e => newHere(e, s.agent, s.area || ''));
