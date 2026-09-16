@@ -153,11 +153,11 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv)
     if a.cmd == "app":
         if a.quit:
-            from .app import request_quit
+            from .launch import request_quit
             return request_quit()
         return run_app(a.port)
     if a.cmd == "login":
-        from .app import login_enabled, set_login
+        from .launch import login_enabled, set_login
         if a.state != "status":
             set_login(a.state == "on")
         print("start at login:", "on" if login_enabled() else "off")

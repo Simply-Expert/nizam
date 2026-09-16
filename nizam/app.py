@@ -21,14 +21,13 @@ from Foundation import NSURLRequest
 from WebKit import WKWebView, WKWebViewConfiguration
 import objc
 
-from .paths import NIZAM_DIR, PORT_FILE, ensure_dirs
-from .server import Handler, make_server
+from .paths import NIZAM_DIR, ensure_dirs
+from .launch import PID_FILE, QUIT_FLAG, login_enabled, set_login
+from .server import make_server
 from .state import Board
 
 POPOVER_SIZE = (1000, 660)
 REFRESH_SECS = 3.0
-PID_FILE = NIZAM_DIR / "app.pid"
-QUIT_FLAG = NIZAM_DIR / "app.quit"
 NSPopoverBehaviorTransient = 1
 NSEventMaskLeftMouseDown = 1 << 1
 NSEventMaskRightMouseDown = 1 << 3
@@ -89,6 +88,7 @@ class AppDelegate(NSObject):
         return self
 
     def applicationDidFinishLaunching_(self, note):
+        sys.stderr.write("nizam app: launched\n")
         self._install_edit_menu()
         self.status = NSStatusBar.systemStatusBar().statusItemWithLength_(NSVariableStatusItemLength)
         btn = self.status.button()
@@ -158,6 +158,9 @@ class AppDelegate(NSObject):
         text = "  ".join(f"{e}{n}" for e, n, _ in parts)
         attrs = {NSFontAttributeName: font}
         self.status.button().setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(text, attrs))
+        if not getattr(self, "_titled", False):
+            self._titled = True
+            sys.stderr.write(f"nizam app: status item titled {text!r}, visible={self.status.isVisible()}\n")
         self.status.button().setToolTip_("Nizam نظام — click for the board, right-click for options")
 
     def statusClicked_(self, sender):
@@ -207,59 +210,10 @@ class AppDelegate(NSObject):
         NSApp.terminate_(None)
 
 
-# ---- launch at login ----
-LAUNCH_AGENT = os.path.expanduser("~/Library/LaunchAgents/co.nizam.app.plist")
-
-
-def login_enabled() -> bool:
-    return os.path.exists(LAUNCH_AGENT)
-
-
-def set_login(on: bool) -> None:
-    if not on:
-        subprocess.run(["launchctl", "unload", LAUNCH_AGENT], capture_output=True)
-        try:
-            os.remove(LAUNCH_AGENT)
-        except FileNotFoundError:
-            pass
-        return
-    import plistlib
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[1]
-    plist = {
-        "Label": "co.nizam.app",
-        "ProgramArguments": [sys.executable, "-m", "nizam", "app"],
-        "WorkingDirectory": str(root),
-        "RunAtLoad": True,
-        "KeepAlive": False,
-        "StandardOutPath": str(NIZAM_DIR / "app.log"),
-        "StandardErrorPath": str(NIZAM_DIR / "app.log"),
-    }
-    os.makedirs(os.path.dirname(LAUNCH_AGENT), exist_ok=True)
-    with open(LAUNCH_AGENT, "wb") as f:
-        plistlib.dump(plist, f)
-
-
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
-
-
-def request_quit() -> int:
-    if PID_FILE.exists() and _pid_alive(int(PID_FILE.read_text() or 0)):
-        QUIT_FLAG.touch()
-        print("asked the menu-bar app to quit")
-        return 0
-    print("no menu-bar app running")
-    return 0
-
-
 def run(port: int) -> int:
     ensure_dirs()
-    if PID_FILE.exists() and _pid_alive(int(PID_FILE.read_text() or 0)):
+    from .launch import pid_alive
+    if PID_FILE.exists() and pid_alive(int(PID_FILE.read_text() or 0)):
         sys.stderr.write("Nizam is already running in the menu bar.\n")
         return 1
     PID_FILE.write_text(str(os.getpid()))
