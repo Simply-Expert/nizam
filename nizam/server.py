@@ -122,6 +122,24 @@ class Handler(BaseHTTPRequestHandler):
                 b.persist.rename(sid, str(body["title"]))
             return self._json({"ok": True, "session_id": sid})
 
+        if parts == ["api", "agents", "set"]:
+            root = str(body.get("root") or "")
+            if not root:
+                return self._json({"error": "root required"}, 400)
+            fields = {}
+            if "name" in body:
+                fields["name"] = str(body["name"]).strip()[:60]
+            if "pinned" in body:
+                fields["pinned"] = bool(body["pinned"])
+            b.persist.set_agent(root, **fields)
+            b.invalidate()
+            return self._json({"ok": True})
+
+        if parts == ["api", "agents", "order"]:
+            b.persist.set_agent_order(list(body.get("roots") or []))
+            b.invalidate()
+            return self._json({"ok": True})
+
         if parts == ["api", "prefs"]:
             for k, v in body.items():
                 if k in ("launcher", "show_done", "density", "selected", "theme"):

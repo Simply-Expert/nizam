@@ -51,6 +51,15 @@ aside .row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; bor
 aside .row:hover { background: var(--accent-bg); }
 aside .row.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
 aside .row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+aside .row .pin { color: var(--muted); font-size: 11px; margin-right: 2px; }
+aside .row.agent[draggable] { cursor: grab; }
+aside .row.drop-before { box-shadow: 0 -2px 0 var(--accent); }
+aside .row.drop-after { box-shadow: 0 2px 0 var(--accent); }
+aside .row.dragging { opacity: .4; }
+.ctx { position: fixed; z-index: 20; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25); padding: 4px; min-width: 160px; display: none; }
+.ctx.open { display: block; }
+.ctx div { padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.ctx div:hover { background: var(--accent-bg); }
 aside .row .cnt { display: flex; gap: 3px; }
 aside .row .cnt span { min-width: 18px; text-align: center; font-size: 11px; padding: 0 5px; border-radius: 999px; font-weight: 600; }
 aside .row .cnt .n { background: var(--needs-bg); color: var(--needs); }
@@ -122,6 +131,7 @@ aside .agent-head .tw { width: 14px; color: var(--muted); font-size: 10px; curso
   <section class="board" id="board"></section>
 </main>
 
+<div class="ctx" id="ctx"></div>
 <div class="modal-bg" id="modal">
   <div class="modal">
     <h3>New session</h3>
@@ -198,10 +208,15 @@ function renderSide(all) {
   h += `<div class="sec">Agents</div>`;
   const byAgent = {};
   for (const s of all) (byAgent[s.agent] ||= []).push(s);
+  const order = DATA.agent_order || [];
+  const rank = r => { const i = order.indexOf(r); return i < 0 ? 1e9 : i; };
   const agents = [...DATA.agents].sort((a,b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    const ra = rank(a.root), rb = rank(b.root);
+    if (ra !== rb) return ra - rb;
     const ca = counts(byAgent[a.root]||[]), cb = counts(byAgent[b.root]||[]);
     const wa = ca.needs*100+ca.working*10+ca.inbox, wb = cb.needs*100+cb.working*10+cb.inbox;
-    return wb - wa || a.name.localeCompare(b.name);
+    return wb - wa || a.display_name.localeCompare(b.display_name);
   });
   for (const a of agents) {
     const list = byAgent[a.root] || [];
@@ -209,7 +224,7 @@ function renderSide(all) {
     const on = SEL.kind !== 'all' && SEL.agent === a.root;
     const collapsed = COLLAPSED.has(a.root);
     const tw = a.areas.length ? `<span class="tw" data-tw="${esc(a.root)}">${collapsed?'▸':'▾'}</span>` : `<span class="tw"></span>`;
-    h += `<div class="row ${SEL.kind==='agent'&&on?'on':''}" data-sel='${esc(JSON.stringify({kind:'agent', agent:a.root}))}' title="${esc(a.display)}">${tw}<span class="name">${esc(a.name)}</span>${cntHtml(counts(list))}</div>`;
+    h += `<div class="row agent ${SEL.kind==='agent'&&on?'on':''}" draggable="true" data-root="${esc(a.root)}" data-sel='${esc(JSON.stringify({kind:'agent', agent:a.root}))}' title="${esc(a.display)}\nDrag to reorder · right-click to rename or pin">${tw}${a.pinned?'<span class="pin">📌</span>':''}<span class="name">${esc(a.display_name)}</span>${cntHtml(counts(list))}</div>`;
     if (!collapsed) for (const ar of a.areas) {
       const sub = list.filter(s => s.area && (s.area === ar.rel || s.area.startsWith(ar.rel+'/')));
       const aon = SEL.kind==='area' && on && SEL.area === ar.rel;
@@ -225,7 +240,62 @@ function renderSide(all) {
     e.stopPropagation(); const r = el.dataset.tw;
     COLLAPSED.has(r) ? COLLAPSED.delete(r) : COLLAPSED.add(r); save('collapsed', [...COLLAPSED]); render();
   }));
+  wireAgentRows(side, agents);
 }
+
+let DRAG = null;
+function wireAgentRows(side, agents) {
+  const rows = [...side.querySelectorAll('.row.agent')];
+  rows.forEach(el => {
+    el.addEventListener('contextmenu', e => { e.preventDefault(); openCtx(e.clientX, e.clientY, el.dataset.root); });
+    el.addEventListener('dblclick', e => { e.preventDefault(); renameAgent(el.dataset.root); });
+    el.addEventListener('dragstart', e => { DRAG = el.dataset.root; el.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    el.addEventListener('dragend', () => { DRAG = null; rows.forEach(r => r.classList.remove('dragging','drop-before','drop-after')); });
+    el.addEventListener('dragover', e => {
+      if (!DRAG || DRAG === el.dataset.root) return;
+      e.preventDefault();
+      const r = el.getBoundingClientRect(); const before = e.clientY < r.top + r.height / 2;
+      rows.forEach(x => x.classList.remove('drop-before','drop-after'));
+      el.classList.add(before ? 'drop-before' : 'drop-after');
+    });
+    el.addEventListener('drop', async e => {
+      e.preventDefault();
+      if (!DRAG || DRAG === el.dataset.root) return;
+      const r = el.getBoundingClientRect(); const before = e.clientY < r.top + r.height / 2;
+      const roots = agents.map(a => a.root).filter(x => x !== DRAG);
+      const i = roots.indexOf(el.dataset.root);
+      roots.splice(before ? i : i + 1, 0, DRAG);
+      const moved = agents.find(a => a.root === DRAG), target = agents.find(a => a.root === el.dataset.root);
+      if (moved && target && moved.pinned !== target.pinned) await api('/api/agents/set', {root: DRAG, pinned: target.pinned});
+      await api('/api/agents/order', {roots});
+      refresh();
+    });
+  });
+}
+
+function agentOf(root) { return DATA.agents.find(a => a.root === root); }
+async function renameAgent(root) {
+  const a = agentOf(root); if (!a) return;
+  const name = prompt(`Display name for ${a.display} (leave empty to use the folder name)`, a.display_name);
+  if (name === null) return;
+  await api('/api/agents/set', {root, name});
+  refresh();
+}
+function openCtx(x, y, root) {
+  const a = agentOf(root); if (!a) return;
+  const c = $('#ctx');
+  c.innerHTML = `<div data-do="rename">Rename…</div><div data-do="pin">${a.pinned ? 'Unpin' : 'Pin to top'}</div><div data-do="top">Move to top</div>`;
+  c.style.left = Math.min(x, window.innerWidth - 180) + 'px'; c.style.top = y + 'px';
+  c.classList.add('open');
+  c.querySelectorAll('[data-do]').forEach(el => el.addEventListener('click', async () => {
+    c.classList.remove('open');
+    if (el.dataset.do === 'rename') return renameAgent(root);
+    if (el.dataset.do === 'pin') await api('/api/agents/set', {root, pinned: !a.pinned});
+    if (el.dataset.do === 'top') await api('/api/agents/order', {roots: [root, ...DATA.agents.map(z => z.root).filter(z => z !== root)]});
+    refresh();
+  }));
+}
+document.addEventListener('click', e => { if (!e.target.closest('#ctx')) $('#ctx').classList.remove('open'); });
 
 const COLS = [['needs','Needs you'],['working','Working'],['inbox','Your turn'],['done','Done']];
 function renderBoard(list) {
@@ -281,7 +351,7 @@ async function onAction(e) {
 function openModal(agentRoot, areaRel) {
   const m = $('#modal');
   const sel = $('#mAgent');
-  sel.innerHTML = DATA.agents.map(a => `<option value="${esc(a.root)}">${esc(a.name)}  (${esc(a.display)})</option>`).join('');
+  sel.innerHTML = DATA.agents.map(a => `<option value="${esc(a.root)}">${esc(a.display_name)}  (${esc(a.display)})</option>`).join('');
   const last = DATA.prefs.last_start || {};
   sel.value = agentRoot || (SEL.agent) || last.cwd || (DATA.agents[0] && DATA.agents[0].root);
   fillAreas(areaRel || (SEL.kind==='area' && SEL.agent===sel.value ? SEL.area : ''));

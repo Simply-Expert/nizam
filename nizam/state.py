@@ -155,6 +155,23 @@ class Persisted:
             self.data["prefs"][key] = value
             self.save()
 
+    def set_agent(self, root: str, **fields) -> None:
+        with self.lock:
+            a = self.data.setdefault("agents", {}).setdefault(root, {})
+            for k, v in fields.items():
+                if v in (None, ""):
+                    a.pop(k, None)
+                else:
+                    a[k] = v
+            if not a:
+                self.data["agents"].pop(root, None)
+            self.save()
+
+    def set_agent_order(self, roots: list[str]) -> None:
+        with self.lock:
+            self.data["agent_order"] = [r for r in roots if isinstance(r, str)]
+            self.save()
+
 
 def _preview(text: str, limit: int = 320) -> str:
     """Last paragraph(s) of the assistant's message, cut at a paragraph
@@ -298,8 +315,16 @@ class Board:
                     continue
             kept.append(s)
         sessions = kept
-        return {"generated_at": now, "agents": sorted(agents.values(), key=lambda a: a["name"].lower()),
-                "sessions": sessions, "prefs": self.persist.data["prefs"]}
+        overrides = self.persist.data.get("agents", {})
+        for a in agents.values():
+            o = overrides.get(a["root"], {})
+            a["display_name"] = o.get("name") or a["name"]
+            a["pinned"] = bool(o.get("pinned"))
+        for s in sessions:
+            s["agent_name"] = agents[s["agent"]]["display_name"]
+        return {"generated_at": now, "agents": sorted(agents.values(), key=lambda a: a["display_name"].lower()),
+                "sessions": sessions, "prefs": self.persist.data["prefs"],
+                "agent_order": self.persist.data.get("agent_order", [])}
 
     @staticmethod
     def _classify(now, t: Transcript, rt: Runtime | None, h: HookState | None, live: bool,
