@@ -178,6 +178,25 @@ def focus(pid: int, cwd: str = "", titles: list[str] | None = None) -> bool:
     return False
 
 
+def _ghostty_new_window(shell_cmd: str, run: bool) -> bool:
+    """Open a window in the running Ghostty (never a second instance) and
+    type the command into its shell, so shell integration and the working
+    directory stay intact and the tab is scriptable afterwards."""
+    text = json.dumps(shell_cmd, ensure_ascii=False)
+    enter = 'send key "enter" to t' if run else ""
+    script = f"""
+tell application "Ghostty"
+    activate
+    set w to new window
+    delay 0.5
+    set t to focused terminal of selected tab of w
+    input text {text} to t
+    {enter}
+    return "ok"
+end tell"""
+    return "ok" in _osascript(script)
+
+
 LAUNCHERS = ("Terminal", "Ghostty")
 
 
@@ -185,17 +204,13 @@ def run_in_new_terminal(shell_cmd: str, paste_only: bool = False, launcher: str 
                         cwd: str | None = None) -> None:
     """Open a new terminal window running shell_cmd. With paste_only the
     command is placed in the zsh line buffer for the user to review."""
+    if launcher == "Ghostty":
+        if _ghostty_new_window(shell_cmd, run=not paste_only):
+            return
+        subprocess.Popen(["open", "-a", "Ghostty"], env=clean_env(), **_DETACHED)
+        return
     if paste_only:
         shell_cmd = "print -z -- " + "'" + shell_cmd.replace("'", "'\\''") + "'"
-    if launcher == "Ghostty":
-        # `-e` hands the rest of argv to Ghostty as the command; an
-        # interactive zsh after it keeps the window open once claude exits.
-        args = ["open", "-na", "Ghostty", "--args"]
-        if cwd:
-            args.append(f"--working-directory={cwd}")
-        args += ["-e", "zsh", "-ic", shell_cmd + "; exec zsh -i"]
-        subprocess.Popen(args, env=clean_env(), **_DETACHED)
-        return
     lit = json.dumps(shell_cmd, ensure_ascii=False)   # AppleScript shares JSON's escapes
     _osascript('tell application "Terminal" to activate',
                f'tell application "Terminal" to do script {lit}')
