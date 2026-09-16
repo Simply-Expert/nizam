@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Nizam · C · Triage list</title>
+<link rel="stylesheet" href="/static/proto/shared.css">
+<style>
+body { display: flex; flex-direction: column; height: 100vh; }
+.top { position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--line); padding: 8px 12px; display: flex; gap: 6px; align-items: center; overflow-x: auto; z-index: 1; }
+.top .brand { font-weight: 700; margin-right: 8px; white-space: nowrap; }
+.chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); cursor: pointer; white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
+.chip.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.top .sp { flex: 1; }
+.feed { flex: 1; overflow-y: auto; padding: 0 0 30px; }
+.grp { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); padding: 14px 14px 4px; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+.grp b { font-weight: 600; color: var(--text); text-transform: none; letter-spacing: 0; font-size: 12px; }
+.grp.needs { color: var(--needs); } .grp.working { color: var(--working); } .grp.inbox { color: var(--inbox); }
+.rowx { display: grid; grid-template-columns: 18px minmax(160px, 38%) 1fr 48px auto; gap: 10px; align-items: center; padding: 7px 14px; border-bottom: 1px solid var(--line); }
+.rowx:hover { background: var(--hover); }
+.rowx .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rowx .t small { font-weight: 500; color: var(--muted); margin-left: 6px; }
+.rowx .p { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rowx .p.why { color: var(--needs); font-weight: 600; }
+.rowx .ago { color: var(--muted); font-size: 12px; text-align: right; }
+.rowx .act button { padding: 2px 8px; font-size: 12px; }
+</style></head><body>
+<div class="top" id="top"></div>
+<div class="feed" id="feed"></div>
+<div class="proto-note">Prototype C · Triage list <a href="/static/proto/a.html">A</a><a href="/static/proto/b.html">B</a></div>
+<script src="/static/proto/shared.js"></script>
+<script>
+let SEL = null;
+function render() {
+  const all = DATA.sessions;
+  let t = `<span class="brand">Nizam</span><span class="chip ${!SEL?'on':''}" data-a="">All ${badges(counts(all))}</span>`;
+  for (const a of DATA.agents) { const list = byAgent(a.root); if (!list.length) continue;
+    t += `<span class="chip ${SEL===a.root?'on':''}" data-a="${esc(a.root)}">${a.pinned?'📌':''}${esc(a.display_name)} ${badges(counts(list))}</span>`; }
+  t += `<span class="sp"></span><button class="primary" style="white-space:nowrap">＋ New</button>`;
+  $('#top').innerHTML = t;
+  $('#top').querySelectorAll('[data-a]').forEach(el => el.onclick = () => { SEL = el.dataset.a || null; render(); });
+
+  const list = sortSessions(SEL ? byAgent(SEL) : all);
+  let f = '';
+  // needs + working are flat across agents; your-turn is grouped by agent
+  for (const b of ['needs', 'working']) {
+    const items = list.filter(s => s.bucket === b); if (!items.length) continue;
+    f += `<div class="grp ${b}">${SECTION[b]} <span class="muted">${items.length}</span></div>` + items.map(row).join('');
+  }
+  const inbox = list.filter(s => s.bucket === 'inbox');
+  const groups = new Map();
+  for (const s of inbox) { if (!groups.has(s.agent)) groups.set(s.agent, []); groups.get(s.agent).push(s); }
+  for (const a of DATA.agents) { const items = groups.get(a.root); if (!items) continue;
+    f += `<div class="grp inbox">Your turn <b>${esc(a.display_name)}</b> <span class="muted">${items.length}</span></div>` + items.map(s => row(s, true)).join(''); }
+  if (!list.length) f += `<div class="muted" style="padding:40px;text-align:center">Nothing waiting</div>`;
+  $('#feed').innerHTML = f;
+  $('#feed').querySelectorAll('[data-act]').forEach(el => el.onclick = async () => { await act(el.closest('.rowx').dataset.id, el.dataset.act); await loadBoard(); render(); });
+}
+function row(s, grouped) {
+  const where = grouped ? (s.area ? `<small>${esc(s.area)}</small>` : '') : `<small>${esc(s.agent_name)}${s.area?' › '+esc(s.area):''}</small>`;
+  const p = s.detail ? `<span class="p why">${esc(s.detail)}</span>` : `<span class="p">${esc(lastPara(s.preview))}</span>`;
+  return `<div class="rowx" data-id="${s.id}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span><span class="t">${esc(s.title)}${where}</span>${p}<span class="ago">${esc(s.ago)}</span><span class="act"><button data-act="open">${s.live?'Jump':'Resume'}</button> <button data-act="done">Done</button></span></div>`;
+}
+loadBoard().then(render);
+</script></body></html>

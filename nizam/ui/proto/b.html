@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Nizam · B · Agent page</title>
+<link rel="stylesheet" href="/static/proto/shared.css">
+<style>
+body { display: grid; grid-template-columns: 230px 1fr; height: 100vh; }
+.pane { min-width: 0; overflow-y: auto; }
+aside { background: var(--panel); border-right: 1px solid var(--line); padding: 8px; }
+aside .row { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 7px; cursor: pointer; }
+aside .row:hover { background: var(--hover); } aside .row.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+aside .row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+aside .brand { font-weight: 700; padding: 6px 8px 10px; font-size: 14px; }
+.page { padding: 0 0 40px; }
+.hero { padding: 18px 24px 12px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 1; }
+.hero h1 { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 12px; }
+.hero h1 .stats { font-size: 12px; color: var(--muted); font-weight: 500; }
+.hero .path { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+.chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); cursor: pointer; }
+.chip.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.chip b { color: var(--inbox); margin-left: 4px; }
+.chips .sp { flex: 1; }
+.group { padding: 0 24px; }
+.rowx { display: grid; grid-template-columns: 18px 1fr 120px 56px auto; gap: 4px 10px; align-items: center; padding: 10px 8px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.rowx:hover { background: var(--hover); }
+.rowx .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rowx .area { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rowx .ago { font-size: 12px; color: var(--muted); text-align: right; }
+.rowx .act { display: flex; gap: 6px; }
+.rowx .act button { padding: 2px 8px; font-size: 12px; }
+.rowx .p { grid-column: 2 / 6; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rowx.open .p { white-space: pre-wrap; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 4px; }
+.rowx .why { grid-column: 2 / 6; font-size: 12px; background: var(--needs-bg); padding: 4px 8px; border-radius: 6px; }
+.all .rowx { grid-template-columns: 18px 1fr 160px 56px auto; }
+</style></head><body>
+<aside class="pane" id="side"></aside>
+<section class="pane page" id="page"></section>
+<div class="proto-note">Prototype B · Agent page <a href="/static/proto/a.html">A</a><a href="/static/proto/c.html">C</a></div>
+<script src="/static/proto/shared.js"></script>
+<script>
+let SEL = {agent: null, area: null}, OPEN = new Set();
+function render() {
+  const all = DATA.sessions;
+  let h = `<div class="brand">Nizam <span class="muted" style="font-weight:500">نظام</span></div>`;
+  h += `<div class="row ${!SEL.agent?'on':''}" data-a=""><span class="name">Everything</span>${badges(counts(all))}</div><div class="sec">Agents</div>`;
+  for (const a of DATA.agents) { const list = byAgent(a.root); if (!list.length) continue;
+    h += `<div class="row ${SEL.agent===a.root?'on':''}" data-a="${esc(a.root)}">${a.pinned?'📌 ':''}<span class="name">${esc(a.display_name)}</span>${badges(counts(list))}</div>`; }
+  $('#side').innerHTML = h;
+  $('#side').querySelectorAll('[data-a]').forEach(el => el.onclick = () => { SEL = {agent: el.dataset.a || null, area: null}; render(); });
+
+  const agent = DATA.agents.find(a => a.root === SEL.agent);
+  let list = agent ? byAgent(agent.root) : all;
+  if (SEL.area) list = list.filter(s => s.area && s.area.startsWith(SEL.area));
+  list = sortSessions(list);
+  const c = counts(agent ? byAgent(agent.root) : all);
+  let p = `<div class="hero"><h1>${agent ? esc(agent.display_name) : 'Everything'} <span class="stats">${c.needs?`<span style="color:var(--needs)">${c.needs} need you</span> · `:''}${c.working} working · ${c.inbox} your turn${agent?` · ${agent.areas.length} areas`:''}</span></h1>`;
+  if (agent) p += `<div class="path">${esc(agent.display)}</div>`;
+  p += `<div class="chips">`;
+  if (agent && agent.areas.length) {
+    p += `<span class="chip ${!SEL.area?'on':''}" data-ar="">all</span>` + agent.areas.map(ar => { const n = byAgent(agent.root).filter(s => s.area && s.area.startsWith(ar.rel)).length;
+      return `<span class="chip ${SEL.area===ar.rel?'on':''}" data-ar="${esc(ar.rel)}">${'· '.repeat(ar.depth)}${esc(ar.name)}${n?`<b>${n}</b>`:''}</span>`; }).join('');
+  }
+  p += `<span class="sp"></span><button class="primary">＋ New session${agent?' here':''}</button></div></div>`;
+  p += `<div class="group ${agent?'':'all'}">`;
+  let last = null;
+  for (const s of list) {
+    if (s.bucket !== last) { p += `<div class="sec ${s.bucket}" style="padding-left:8px">${SECTION[s.bucket]} <span class="muted" style="font-weight:500">${list.filter(x=>x.bucket===s.bucket).length}</span></div>`; last = s.bucket; }
+    const open = OPEN.has(s.id);
+    p += `<div class="rowx ${open?'open':''}" data-id="${s.id}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span><span class="t">${esc(s.title)}</span><span class="area">${agent ? esc(s.area || '—') : esc(s.agent_name) + (s.area ? ' › ' + esc(s.area) : '')}</span><span class="ago">${esc(s.ago)}</span><span class="act"><button data-act="open">${s.live?'Jump':'Resume'}</button><button data-act="done">Done</button></span>` +
+         (s.detail ? `<span class="why">${esc(s.detail)}</span>` : '') +
+         `<span class="p">${esc(open ? s.preview : lastPara(s.preview))}</span></div>`;
+  }
+  p += `</div>`;
+  $('#page').innerHTML = p;
+  $('#page').querySelectorAll('[data-ar]').forEach(el => el.onclick = () => { SEL.area = el.dataset.ar || null; render(); });
+  $('#page').querySelectorAll('.rowx').forEach(el => el.onclick = e => { if (e.target.dataset.act) return; const id = el.dataset.id; OPEN.has(id) ? OPEN.delete(id) : OPEN.add(id); render(); });
+  $('#page').querySelectorAll('[data-act]').forEach(el => el.onclick = async e => { e.stopPropagation(); await act(el.closest('.rowx').dataset.id, el.dataset.act); await loadBoard(); render(); });
+}
+loadBoard().then(render);
+</script></body></html>

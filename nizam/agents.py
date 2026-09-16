@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
-AGENT_MARKERS = ("CLAUDE.md", "AGENTS.md", ".claude")
+AGENT_MARKERS = ("CLAUDE.md", "AGENTS.md")
 AREA_MARKER = "INSTRUCTIONS.md"
 SKIP_DIRS = {"node_modules", ".git", ".venv", "venv", "__pycache__", "dist",
              "build", ".next", "archive", ".archive", "data", "cache"}
@@ -62,6 +62,17 @@ def display_path(p: Path) -> str:
     return "~" + s[len(h):] if s.startswith(h) else s
 
 
+def _is_agent_dir(p: Path) -> bool:
+    if any((p / m).is_file() for m in AGENT_MARKERS):
+        return True
+    dot = p / ".claude"
+    if dot.is_dir():
+        # Claude drops settings.local.json wherever you grant a permission;
+        # only a deliberately configured .claude folder marks an agent.
+        return any(c.name != "settings.local.json" for c in dot.iterdir())
+    return False
+
+
 def find_agent_root(cwd: Path) -> Path:
     """Nearest ancestor (inclusive) carrying an agent marker, stopping at
     $HOME. A folder with no marker anywhere above it is its own agent:
@@ -70,7 +81,7 @@ def find_agent_root(cwd: Path) -> Path:
     for p in (cwd, *cwd.parents):
         if p == HOME or p == p.parent:
             break
-        if any((p / m).exists() for m in AGENT_MARKERS):
+        if _is_agent_dir(p):
             return p
     return cwd
 
