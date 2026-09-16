@@ -27,7 +27,7 @@ from .launch import PID_FILE, QUIT_FLAG, login_enabled, set_login
 from .server import make_server
 from .state import Board
 
-POPOVER_SIZE = (1000, 660)
+POPOVER_SIZE = (1080, 680)
 REFRESH_SECS = 3.0
 NSPopoverBehaviorTransient = 1
 NSEventMaskLeftMouseDown = 1 << 1
