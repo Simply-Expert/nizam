@@ -313,7 +313,7 @@ document.addEventListener('click', e => { if (!e.target.closest('#ctx')) $('#ctx
 function renderList() {
   const agent = agentOf(SEL.agent);
   const list = currentList();
-  let h = `<div class="head"><h2><span class="t">${agent ? esc(agent.display_name) : 'Everything'}</span><span class="n">${list.length}</span><button class="primary" style="padding:2px 8px;font-size:12px" data-newhere="1">＋ New${agent?' here':''}</button></h2>`;
+  let h = `<div class="head"><h2><span class="t">${agent ? esc(agent.display_name) : 'Everything'}</span><span class="n">${list.length}</span><button class="quiet" style="padding:2px 8px;font-size:12px" data-clear="1" title="Mark every exited 'Your turn' session here as done">Clear</button><button class="primary" style="padding:2px 8px;font-size:12px" data-newhere="1">＋ New${agent?' here':''}</button></h2>`;
   h += `<div class="chips"><span class="chip agentchip ${!SEL.agent?'on':''}" data-agent="">All</span>` + sortedAgents().filter(a => visible(byAgent(a.root)).length).map(a => `<span class="chip agentchip ${SEL.agent===a.root?'on':''}" data-agent="${esc(a.root)}">${esc(a.display_name)}</span>`).join('');
   if (agent && agent.areas.length) {
     h += `<span class="chip ${!SEL.area?'on':''}" data-ar="">all areas</span>` + agent.areas.map(ar => {
@@ -334,6 +334,14 @@ function renderList() {
   el.querySelectorAll('[data-agent]').forEach(c => c.addEventListener('click', () => { SEL = {agent: c.dataset.agent || null, area: null}; save('sel', SEL); CUR = null; render(); }));
   el.querySelectorAll('[data-id]').forEach(c => c.addEventListener('click', () => { CUR = c.dataset.id; detailOpen = true; render(); }));
   el.querySelector('[data-newhere]').addEventListener('click', () => openModal(SEL.agent, SEL.area));
+  el.querySelector('[data-clear]').addEventListener('click', async () => {
+    const n = list.filter(s => s.bucket === 'inbox' && !s.live).length;
+    if (!n) { toast('Nothing to clear: live sessions stay'); return; }
+    const ok = await ask(`Mark ${n} exited session${n>1?'s':''} as done?`, 'yes', 'Live sessions are left alone. Any of them reopens on new activity.');
+    if (ok === null) return;
+    const r = await api('/api/sessions/done-all', {agent: SEL.agent, area: SEL.area});
+    toast(`${r.marked} marked done`); refresh(true);
+  });
   if ((!CUR || !list.some(s => s.id === CUR)) && list.length && window.innerWidth > 760) { CUR = list[0].id; renderListSelection(); }
 }
 function renderListSelection() { document.querySelectorAll('.item').forEach(i => i.classList.toggle('on', i.dataset.id === CUR)); }

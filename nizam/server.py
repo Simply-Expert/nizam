@@ -122,6 +122,22 @@ class Handler(BaseHTTPRequestHandler):
                 b.persist.rename(sid, str(body["title"]))
             return self._json({"ok": True, "session_id": sid})
 
+        if parts == ["api", "sessions", "done-all"]:
+            want_agent = body.get("agent")
+            want_area = body.get("area")
+            n = 0
+            for s in b.snapshot()["sessions"]:
+                if s["bucket"] != "inbox" or s["live"]:
+                    continue
+                if want_agent and s["agent"] != want_agent:
+                    continue
+                if want_area and not (s["area"] and (s["area"] == want_area or s["area"].startswith(want_area + "/"))):
+                    continue
+                b.persist.mark_done(s["id"], by="user")
+                n += 1
+            b.invalidate()
+            return self._json({"ok": True, "marked": n})
+
         if parts == ["api", "agents", "set"]:
             root = str(body.get("root") or "")
             if not root:
