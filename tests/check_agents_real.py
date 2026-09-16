@@ -2,7 +2,7 @@
 import json, sys, time, collections
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from standup.agents import resolve, display_path
+from nizam.agents import resolve, display_path
 
 root = Path.home()/".claude/projects"; cutoff = time.time()-7*86400
 tree = collections.defaultdict(lambda: collections.Counter())

@@ -139,7 +139,7 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
     if open_browser:
         import subprocess
         threading.Timer(0.5, lambda: subprocess.Popen(["open", f"http://127.0.0.1:{port}/"])).start()
-    print(f"standup: http://127.0.0.1:{port}/", flush=True)
+    print(f"nizam: http://127.0.0.1:{port}/", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

@@ -1,4 +1,4 @@
-"""`standup` command line: serve, open, install/uninstall hooks, doctor."""
+"""`nizam` command line: serve, open, install/uninstall hooks, doctor."""
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .paths import CLAUDE_SETTINGS, EVENTS_FILE, PORT_FILE, STANDUP_DIR, ensure_dirs
+from .paths import CLAUDE_SETTINGS, EVENTS_FILE, PORT_FILE, NIZAM_DIR, ensure_dirs
 
 
 
@@ -31,7 +31,7 @@ HOOK_EVENTS = {
     "PostToolUse": "AskUserQuestion|ExitPlanMode",
     "ElicitationResult": None,
 }
-MARK = "standup/hook.py"
+MARK = "nizam/hook.py"
 
 
 def _load_settings() -> dict:
@@ -42,7 +42,7 @@ def _load_settings() -> dict:
 
 
 def _save_settings(d: dict) -> None:
-    bak = CLAUDE_SETTINGS.with_suffix(".json.bak-standup")
+    bak = CLAUDE_SETTINGS.with_suffix(".json.bak-nizam")
     if CLAUDE_SETTINGS.exists() and not bak.exists():
         shutil.copy2(CLAUDE_SETTINGS, bak)
     tmp = CLAUDE_SETTINGS.with_suffix(".json.tmp")
@@ -74,7 +74,7 @@ def install_hooks() -> None:
     d["hooks"] = hooks
     _save_settings(d)
     ensure_dirs()
-    print(f"✓ hooks installed in {CLAUDE_SETTINGS} (backup: settings.json.bak-standup)")
+    print(f"✓ hooks installed in {CLAUDE_SETTINGS} (backup: settings.json.bak-nizam)")
     print("  Live sessions pick them up on their next event; no restart needed.")
 
 
@@ -84,7 +84,7 @@ def uninstall_hooks() -> None:
     if not d["hooks"]:
         d.pop("hooks")
     _save_settings(d)
-    print("✓ standup hooks removed")
+    print("✓ nizam hooks removed")
 
 
 def doctor() -> int:
@@ -101,7 +101,7 @@ def doctor() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="standup")
+    p = argparse.ArgumentParser(prog="nizam")
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("serve", help="run the local server")
     s.add_argument("--port", type=int, default=7331)

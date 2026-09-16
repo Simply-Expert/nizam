@@ -1,7 +1,7 @@
 """Claude Code hook entrypoint. Appends one JSON line per event to
-~/.standup/events.jsonl and never blocks or prints (exit 0 always).
+~/.nizam/events.jsonl and never blocks or prints (exit 0 always).
 
-Installed into ~/.claude/settings.json by `standup install`.
+Installed into ~/.claude/settings.json by `nizam install`.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def main() -> int:
             if isinstance(qs, list) and qs and isinstance(qs[0], dict):
                 ev["question"] = str(qs[0].get("question", ""))[:MAX_TEXT]
         ev["ts"] = time.time()
-        path = os.path.join(os.path.expanduser("~"), ".standup", "events.jsonl")
+        path = os.path.join(os.path.expanduser("~"), ".nizam", "events.jsonl")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(ev, ensure_ascii=False) + "\n")

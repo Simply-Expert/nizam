@@ -56,7 +56,7 @@ class HookState:
 
 
 class HookTail:
-    """Incrementally consume ~/.standup/events.jsonl."""
+    """Incrementally consume ~/.nizam/events.jsonl."""
 
     def __init__(self) -> None:
         self.offset = 0
@@ -112,7 +112,7 @@ class HookTail:
 
 
 class Persisted:
-    """~/.standup/state.json — the user's decisions (done flags, names)."""
+    """~/.nizam/state.json — the user's decisions (done flags, names)."""
 
     def __init__(self) -> None:
         self.lock = threading.Lock()

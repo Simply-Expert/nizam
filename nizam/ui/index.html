@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Standup</title>
+<title>Nizam · نظام</title>
 <style>
 :root {
   --bg: #f6f7f9; --panel: #ffffff; --line: #e3e6ea; --text: #1a1d21; --muted: #6b7280;
@@ -111,7 +111,7 @@ aside .agent-head .tw { width: 14px; color: var(--muted); font-size: 10px; curso
 </head>
 <body>
 <header>
-  <h1>Standup</h1>
+  <h1>Nizam <span style="color:var(--muted);font-weight:500">نظام</span></h1>
   <div class="totals" id="totals"></div>
   <div class="spacer"></div>
   <label class="chk"><input type="checkbox" id="showDone"> Show done</label>
@@ -155,8 +155,8 @@ let DATA = null, SEL = load('sel', {kind:'all'}), OPEN = new Set(), COLLAPSED = 
 let showDone = load('showDone', false);
 $('#showDone').checked = showDone;
 
-function load(k, d) { try { const v = localStorage.getItem('standup.'+k); return v ? JSON.parse(v) : d; } catch { return d; } }
-function save(k, v) { try { localStorage.setItem('standup.'+k, JSON.stringify(v)); } catch {} }
+function load(k, d) { try { const v = localStorage.getItem('nizam.'+k); return v ? JSON.parse(v) : d; } catch { return d; } }
+function save(k, v) { try { localStorage.setItem('nizam.'+k, JSON.stringify(v)); } catch {} }
 
 async function api(path, body) {
   const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)} : {});
