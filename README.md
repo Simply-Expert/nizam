@@ -16,7 +16,7 @@ menu bar and a floating badge, and opens the same board in a popover or a browse
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/blink22/nizam/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Simply-Expert/nizam/main/install.sh | bash
 ```
 
 That clones the code to `~/.nizam/src`, installs Claude Code hooks into `~/.claude/settings.json`
@@ -26,7 +26,7 @@ app. Re-run the same line to upgrade. Nothing phones home and nothing needs an A
 Manual install:
 
 ```bash
-git clone https://github.com/blink22/nizam ~/.nizam/src && cd ~/.nizam/src
+git clone https://github.com/Simply-Expert/nizam ~/.nizam/src && cd ~/.nizam/src
 bin/nizam install      # hooks + venv
 bin/nizam app          # menu bar + floating badge + local server
 bin/nizam login on     # start at login

@@ -1,14 +1,14 @@
 #!/bin/bash
 # Nizam installer — macOS only.
-#   curl -fsSL https://raw.githubusercontent.com/blink22/nizam/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Simply-Expert/nizam/main/install.sh | bash
 # Re-run the same line to upgrade. Env overrides:
 #   NIZAM_SRC   where the code lives      (default ~/.nizam/src)
-#   NIZAM_REPO  git URL to clone          (default https://github.com/blink22/nizam)
+#   NIZAM_REPO  git URL to clone          (default https://github.com/Simply-Expert/nizam)
 #   NIZAM_REF   branch or tag to check out (default main)
 set -euo pipefail
 
 SRC="${NIZAM_SRC:-$HOME/.nizam/src}"
-REPO="${NIZAM_REPO:-https://github.com/blink22/nizam}"
+REPO="${NIZAM_REPO:-https://github.com/Simply-Expert/nizam}"
 REF="${NIZAM_REF:-main}"
 BOLD=$'\033[1m'; DIM=$'\033[2m'; GREEN=$'\033[32m'; RED=$'\033[31m'; RESET=$'\033[0m'
 step() { printf '%s→%s %s\n' "$BOLD" "$RESET" "$*"; }
