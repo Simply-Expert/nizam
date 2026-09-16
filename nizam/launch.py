@@ -29,7 +29,7 @@ def set_login(on: bool) -> None:
     root = Path(__file__).resolve().parents[1]
     plist = {
         "Label": "co.nizam.app",
-        "ProgramArguments": [sys.executable, "-m", "nizam", "app"],
+        "ProgramArguments": [str(NIZAM_DIR / "venv" / "bin" / "python"), "-m", "nizam", "app"],
         "WorkingDirectory": str(root),
         "RunAtLoad": True,
         "KeepAlive": False,
