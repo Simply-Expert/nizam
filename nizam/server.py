@@ -98,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "open":
                 ok = False
                 if s["live"] and s["pid"]:
-                    ok = terminal.focus(s["pid"])
+                    ok = terminal.focus(s["pid"], s["cwd"], [s.get("auto_title", ""), s["title"]])
                 if not ok:
                     ok = terminal.resume(sid, s["cwd"], bool(body.get("paste")), launcher)
                 b.invalidate()

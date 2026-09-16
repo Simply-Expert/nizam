@@ -113,7 +113,49 @@ return "missing"'''
     return "found" in _osascript(script)
 
 
-def focus(pid: int) -> bool:
+def focus_ghostty(cwd: str, titles: list[str]) -> bool:
+    """Ghostty 1.3+ scripting: terminals expose title and working directory
+    but not the tty, so match on cwd plus the title Claude sets."""
+    def q(x: str) -> str:
+        return json.dumps(x, ensure_ascii=False)
+    wanted = [t.strip() for t in titles if t and t.strip()]
+    conds = " or ".join(f"(nm contains {q(t)})" for t in wanted) or "false"
+    script = f"""
+tell application "Ghostty"
+    set byTitle to missing value
+    set byCwd to missing value
+    set cwdHits to 0
+    repeat with w in windows
+        repeat with tb in tabs of w
+            repeat with s in terminals of tb
+                set wd to working directory of s
+                set nm to name of s
+                if wd is {q(cwd)} then
+                    set cwdHits to cwdHits + 1
+                    set byCwd to s
+                    if {conds} then
+                        set byTitle to s
+                    end if
+                end if
+            end repeat
+        end repeat
+    end repeat
+    if byTitle is not missing value then
+        focus byTitle
+        activate
+        return "found"
+    end if
+    if cwdHits is 1 then
+        focus byCwd
+        activate
+        return "found"
+    end if
+    return "missing"
+end tell"""
+    return "found" in _osascript(script)
+
+
+def focus(pid: int, cwd: str = "", titles: list[str] | None = None) -> bool:
     host = session_host(pid)
     if host["kind"] == "desktop":
         subprocess.Popen(["open", "-a", "Claude"], env=clean_env(), **_DETACHED)
@@ -122,6 +164,8 @@ def focus(pid: int) -> bool:
     if app == "Terminal" and focus_terminal_tab(host["tty"]):
         return True
     if app == "iTerm" and focus_iterm_tab(host["tty"]):
+        return True
+    if app == "Ghostty" and cwd and focus_ghostty(cwd, titles or []):
         return True
     if app:
         subprocess.Popen(["open", "-a", app], env=clean_env(), **_DETACHED)

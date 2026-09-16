@@ -285,6 +285,7 @@ class Board:
             sessions.append({
                 "id": sid,
                 "title": _title(t, names.get(sid)),
+                "auto_title": _title(t, None),
                 "agent": a_key,
                 "agent_name": agent.name,
                 "area": area.rel if area else None,
