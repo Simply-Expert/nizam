@@ -14,8 +14,9 @@ import threading
 from AppKit import (
     NSApp, NSApplication, NSApplicationActivationPolicyAccessory, NSMenu, NSMenuItem,
     NSPopover, NSStatusBar, NSViewController, NSVariableStatusItemLength, NSMakeRect, NSSize,
-    NSFont, NSAttributedString, NSColor, NSFontAttributeName,
-    NSObject, NSTimer, NSWorkspace, NSURL,
+    NSFont, NSAttributedString, NSColor, NSFontAttributeName, NSForegroundColorAttributeName,
+    NSObject, NSTimer, NSWorkspace, NSURL, NSPanel, NSView, NSBezierPath, NSEvent,
+    NSBackingStoreBuffered, NSMakePoint, NSScreen, NSFontWeightSemibold,
 )
 from Foundation import NSURLRequest
 from WebKit import WKWebView, WKWebViewConfiguration
@@ -31,6 +32,13 @@ REFRESH_SECS = 3.0
 NSPopoverBehaviorTransient = 1
 NSEventMaskLeftMouseDown = 1 << 1
 NSEventMaskRightMouseDown = 1 << 3
+NSFloatingWindowLevel = 5
+NSWindowStyleMaskBorderless = 0
+NSWindowStyleMaskNonactivatingPanel = 1 << 7
+NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0
+NSWindowCollectionBehaviorStationary = 1 << 4
+NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8
+BADGE_H = 28
 
 
 def _notify(title: str, body: str) -> None:
@@ -66,6 +74,107 @@ class BoardVC(NSViewController):
         self.web.loadRequest_(NSURLRequest.requestWithURL_(url))
 
 
+class BadgeView(NSView):
+    """A draggable capsule showing the three counts. Click toggles the popover."""
+    delegate = objc.ivar()
+    counts = objc.ivar()
+    _down = objc.ivar()
+    _dragged = objc.ivar()
+
+    def initWithFrame_delegate_(self, frame, delegate):
+        self = objc.super(BadgeView, self).initWithFrame_(frame)
+        if self is None:
+            return None
+        self.delegate = delegate
+        self.counts = {"needs": 0, "working": 0, "inbox": 0}
+        self._dragged = False
+        return self
+
+    def acceptsFirstMouse_(self, event):
+        return True   # otherwise the first click after another app only focuses us
+
+    @objc.python_method
+    def segments(self):
+        c = self.counts
+        segs = []
+        if c["needs"]:
+            segs.append((f"🔔 {c['needs']}", NSColor.systemRedColor()))
+        if c["working"]:
+            segs.append((f"⚙ {c['working']}", NSColor.systemOrangeColor()))
+        segs.append((f"📥 {c['inbox']}", NSColor.labelColor()))
+        return segs
+
+    @objc.python_method
+    def attributed(self, text, color):
+        font = NSFont.systemFontOfSize_weight_(12, NSFontWeightSemibold)
+        return NSAttributedString.alloc().initWithString_attributes_(
+            text, {NSFontAttributeName: font, NSForegroundColorAttributeName: color})
+
+    @objc.python_method
+    def desired_width(self):
+        w = 14
+        for text, color in self.segments():
+            w += self.attributed(text, color).size().width + 12
+        return max(60, w + 2)
+
+    def drawRect_(self, rect):
+        b = self.bounds()
+        path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(b, b.size.height / 2, b.size.height / 2)
+        NSColor.windowBackgroundColor().colorWithAlphaComponent_(0.92).setFill()
+        path.fill()
+        NSColor.separatorColor().setStroke()
+        path.setLineWidth_(1)
+        path.stroke()
+        x = 8.0
+        for text, color in self.segments():
+            a = self.attributed(text, color)
+            sz = a.size()
+            a.drawAtPoint_(NSMakePoint(x, (b.size.height - sz.height) / 2))
+            x += sz.width + 12
+
+    def mouseDown_(self, event):
+        self._down = event.locationInWindow()
+        self._dragged = False
+
+    def mouseDragged_(self, event):
+        loc = event.locationInWindow()
+        if not self._dragged and abs(loc.x - self._down.x) < 3 and abs(loc.y - self._down.y) < 3:
+            return
+        self._dragged = True
+        win = self.window()
+        o = win.frame().origin
+        screen_loc = NSEvent.mouseLocation()
+        win.setFrameOrigin_(NSMakePoint(screen_loc.x - self._down.x, screen_loc.y - self._down.y))
+
+    def mouseUp_(self, event):
+        if self._dragged:
+            self.delegate.badgeMoved_(None)
+        else:
+            self.delegate.badgeClicked_(self)
+
+    def rightMouseDown_(self, event):
+        self.delegate.showMenuAt_(self)
+
+
+def make_badge_panel(view_delegate):
+    panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+        NSMakeRect(0, 0, 120, BADGE_H),
+        NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel,
+        NSBackingStoreBuffered, False)
+    panel.setLevel_(NSFloatingWindowLevel)
+    panel.setOpaque_(False)
+    panel.setBackgroundColor_(NSColor.clearColor())
+    panel.setHasShadow_(True)
+    panel.setHidesOnDeactivate_(False)
+    panel.setMovableByWindowBackground_(False)
+    panel.setCollectionBehavior_(NSWindowCollectionBehaviorCanJoinAllSpaces
+                                 | NSWindowCollectionBehaviorStationary
+                                 | NSWindowCollectionBehaviorFullScreenAuxiliary)
+    view = BadgeView.alloc().initWithFrame_delegate_(NSMakeRect(0, 0, 120, BADGE_H), view_delegate)
+    panel.setContentView_(view)
+    return panel, view
+
+
 class AppDelegate(NSObject):
     status = objc.ivar()
     popover = objc.ivar()
@@ -76,6 +185,9 @@ class AppDelegate(NSObject):
     monitor = objc.ivar()
     seen_needs = objc.ivar()
     seeded = objc.ivar()
+    badge = objc.ivar()
+    badge_view = objc.ivar()
+    _menu_anchor = objc.ivar()
 
     def initWithBoard_port_(self, board, port):
         self = objc.super(AppDelegate, self).init()
@@ -88,7 +200,6 @@ class AppDelegate(NSObject):
         return self
 
     def applicationDidFinishLaunching_(self, note):
-        sys.stderr.write("nizam app: launched\n")
         self._install_edit_menu()
         self.status = NSStatusBar.systemStatusBar().statusItemWithLength_(NSVariableStatusItemLength)
         btn = self.status.button()
@@ -100,6 +211,11 @@ class AppDelegate(NSObject):
         self.popover.setContentSize_(NSSize(*POPOVER_SIZE))
         self.vc = BoardVC.alloc().initWithPort_(self.port)
         self.popover.setContentViewController_(self.vc)
+        self.popover.setDelegate_(self)
+        self.badge, self.badge_view = make_badge_panel(self)
+        self._restore_badge()
+        if self.board.persist.data["prefs"].get("badge", True):
+            self.badge.orderFrontRegardless()
         self.refresh_(None)
         self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
             REFRESH_SECS, self, "refresh:", None, True)
@@ -136,6 +252,10 @@ class AppDelegate(NSObject):
             if s["bucket"] == "needs":
                 needs_now[s["id"]] = s
         self._set_title(counts)
+        self.badge_view.counts = counts
+        self.badge.setContentSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
+        self.badge_view.setFrameSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
+        self.badge_view.setNeedsDisplay_(True)
         new_ids = set(needs_now) - self.seen_needs
         if self.seeded and new_ids:
             if len(new_ids) == 1:
@@ -158,10 +278,65 @@ class AppDelegate(NSObject):
         text = "  ".join(f"{e}{n}" for e, n, _ in parts)
         attrs = {NSFontAttributeName: font}
         self.status.button().setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(text, attrs))
-        if not getattr(self, "_titled", False):
-            self._titled = True
-            sys.stderr.write(f"nizam app: status item titled {text!r}, visible={self.status.isVisible()}\n")
         self.status.button().setToolTip_("Nizam نظام — click for the board, right-click for options")
+
+    @objc.python_method
+    def _restore_badge(self):
+        pos = self.board.persist.data["prefs"].get("badge_pos")
+        screen = NSScreen.mainScreen().visibleFrame()
+        if pos:
+            self.badge.setFrameOrigin_(NSMakePoint(pos[0], pos[1]))
+        else:
+            self.badge.setFrameOrigin_(NSMakePoint(screen.origin.x + screen.size.width - 160,
+                                                   screen.origin.y + screen.size.height - 50))
+
+    def badgeMoved_(self, _):
+        o = self.badge.frame().origin
+        self.board.persist.set_pref("badge_pos", [o.x, o.y])
+
+    def badgeClicked_(self, view):
+        if self.popover.isShown():
+            self.popover.close()
+            return
+        self.vc.view()
+        self.popover.showRelativeToRect_ofView_preferredEdge_(view.bounds(), view, 1)
+        NSApp.activateIgnoringOtherApps_(True)
+        self._install_monitor()
+
+    def showMenuAt_(self, view):
+        self._menu_anchor = view
+        self._show_menu()
+
+    @objc.python_method
+    def _install_monitor(self):
+        # A transient popover on a non-activating panel misses outside clicks; watch for them.
+        self._remove_monitor()
+        def handler(event):
+            if self.popover.isShown():
+                self.performSelector_withObject_afterDelay_("closePopover:", None, 0.0)
+        self.monitor = NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+            NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown, handler)
+
+    @objc.python_method
+    def _remove_monitor(self):
+        if self.monitor is not None:
+            NSEvent.removeMonitor_(self.monitor)
+            self.monitor = None
+
+    def closePopover_(self, _):
+        if self.popover.isShown():
+            self.popover.close()
+
+    def popoverDidClose_(self, note):
+        self._remove_monitor()
+
+    def toggleBadge_(self, _):
+        on = not self.board.persist.data["prefs"].get("badge", True)
+        self.board.persist.set_pref("badge", on)
+        if on:
+            self.badge.orderFrontRegardless()
+        else:
+            self.badge.orderOut_(None)
 
     def statusClicked_(self, sender):
         ev = NSApp.currentEvent()
@@ -187,11 +362,19 @@ class AppDelegate(NSObject):
         login = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Start at login", "toggleLogin:", "")
         login.setState_(1 if login_enabled() else 0)
         menu.addItem_(login)
+        badge = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Floating badge", "toggleBadge:", "")
+        badge.setState_(1 if self.board.persist.data["prefs"].get("badge", True) else 0)
+        menu.addItem_(badge)
         menu.addItem_(NSMenuItem.separatorItem())
         menu.addItem_(NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Quit Nizam", "quit:", "q"))
         for i in range(menu.numberOfItems()):
             menu.itemAtIndex_(i).setTarget_(self)
-        self.status.popUpStatusItemMenu_(menu)
+        anchor = self._menu_anchor
+        self._menu_anchor = None
+        if anchor is not None:
+            menu.popUpMenuPositioningItem_atLocation_inView_(None, NSMakePoint(0, 0), anchor)
+        else:
+            self.status.popUpStatusItemMenu_(menu)
 
     def openBrowser_(self, _):
         NSWorkspace.sharedWorkspace().openURL_(NSURL.URLWithString_(f"http://127.0.0.1:{self.port}/"))
