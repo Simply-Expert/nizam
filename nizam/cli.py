@@ -98,6 +98,18 @@ def run_app(port: int) -> int:
     return run(port)
 
 
+SKILL_SRC = Path(__file__).resolve().parents[1] / "skills" / "nizam" / "SKILL.md"
+SKILL_DST = Path.home() / ".claude" / "skills" / "nizam" / "SKILL.md"
+
+
+def install_skill() -> None:
+    if not SKILL_SRC.exists():
+        return
+    SKILL_DST.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(SKILL_SRC, SKILL_DST)
+    print(f"✓ /nizam skill installed at {SKILL_DST}")
+
+
 def install_hooks() -> None:
     d = _load_settings()
     hooks = _strip_ours(d.get("hooks") or {})
@@ -120,6 +132,13 @@ def uninstall_hooks() -> None:
         d.pop("hooks")
     _save_settings(d)
     print("✓ nizam hooks removed")
+    from .launch import login_enabled, set_login
+    if login_enabled():
+        set_login(False)
+        print("✓ start-at-login removed")
+    if SKILL_DST.exists():
+        SKILL_DST.unlink()
+        print("✓ /nizam skill removed")
 
 
 def doctor() -> int:
@@ -175,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
         subprocess.Popen(["open", f"http://127.0.0.1:{port}/"])
         return 0
     if a.cmd == "install":
-        install_hooks(); ensure_venv(); return 0
+        install_hooks(); install_skill(); ensure_venv(); return 0
     if a.cmd == "uninstall":
         uninstall_hooks(); return 0
     if a.cmd == "doctor":
