@@ -247,7 +247,7 @@ function renderSide() {
   const agents = sortedAgents();
   for (const a of agents) {
     const list = visible(byAgent(a.root));
-    if (!list.length && !showDone) continue;
+    if (!list.length && !showDone && !a.pinned) continue;
     h += `<div class="row agent ${SEL.agent===a.root?'on':''}" draggable="true" data-root="${esc(a.root)}" data-a="${esc(a.root)}" title="${esc(a.display)}\nDrag to reorder · right-click to rename or pin">${a.pinned?'<span class="pin">📌</span>':''}<span class="name">${esc(a.display_name)}</span>${badges(counts(list))}</div>`;
   }
   h += `<div class="foot"><label class="chk"><input type="checkbox" id="showDone" ${showDone?'checked':''}> Show done</label></div>`;
