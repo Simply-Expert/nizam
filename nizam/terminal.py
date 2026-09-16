@@ -115,42 +115,47 @@ return "missing"'''
 
 def focus_ghostty(cwd: str, titles: list[str]) -> bool:
     """Ghostty 1.3+ scripting: terminals expose title and working directory
-    but not the tty, so match on cwd plus the title Claude sets."""
+    but not the tty. Title is the primary key (Claude sets it to the session
+    title); the working directory only breaks ties, since tabs launched via
+    `-e` report it empty."""
     def q(x: str) -> str:
         return json.dumps(x, ensure_ascii=False)
     wanted = [t.strip() for t in titles if t and t.strip()]
     conds = " or ".join(f"(nm contains {q(t)})" for t in wanted) or "false"
     script = f"""
 tell application "Ghostty"
-    set byTitle to missing value
-    set byCwd to missing value
+    set titleHits to {{}}
+    set titleCwdHit to missing value
+    set cwdOnly to missing value
     set cwdHits to 0
     repeat with w in windows
         repeat with tb in tabs of w
             repeat with s in terminals of tb
-                set wd to working directory of s
                 set nm to name of s
+                set wd to working directory of s
+                if {conds} then
+                    set end of titleHits to s
+                    if wd is {q(cwd)} then set titleCwdHit to s
+                end if
                 if wd is {q(cwd)} then
                     set cwdHits to cwdHits + 1
-                    set byCwd to s
-                    if {conds} then
-                        set byTitle to s
-                    end if
+                    set cwdOnly to s
                 end if
             end repeat
         end repeat
     end repeat
-    if byTitle is not missing value then
-        focus byTitle
-        activate
-        return "found"
+    set target to missing value
+    if titleCwdHit is not missing value then
+        set target to titleCwdHit
+    else if (count of titleHits) is 1 then
+        set target to item 1 of titleHits
+    else if (count of titleHits) is 0 and cwdHits is 1 then
+        set target to cwdOnly
     end if
-    if cwdHits is 1 then
-        focus byCwd
-        activate
-        return "found"
-    end if
-    return "missing"
+    if target is missing value then return "missing"
+    focus target
+    activate
+    return "found"
 end tell"""
     return "found" in _osascript(script)
 
@@ -176,7 +181,8 @@ def focus(pid: int, cwd: str = "", titles: list[str] | None = None) -> bool:
 LAUNCHERS = ("Terminal", "Ghostty")
 
 
-def run_in_new_terminal(shell_cmd: str, paste_only: bool = False, launcher: str = "Terminal") -> None:
+def run_in_new_terminal(shell_cmd: str, paste_only: bool = False, launcher: str = "Terminal",
+                        cwd: str | None = None) -> None:
     """Open a new terminal window running shell_cmd. With paste_only the
     command is placed in the zsh line buffer for the user to review."""
     if paste_only:
@@ -184,8 +190,11 @@ def run_in_new_terminal(shell_cmd: str, paste_only: bool = False, launcher: str 
     if launcher == "Ghostty":
         # `-e` hands the rest of argv to Ghostty as the command; an
         # interactive zsh after it keeps the window open once claude exits.
-        subprocess.Popen(["open", "-na", "Ghostty", "--args", "-e", "zsh", "-ic",
-                          shell_cmd + "; exec zsh -i"], env=clean_env(), **_DETACHED)
+        args = ["open", "-na", "Ghostty", "--args"]
+        if cwd:
+            args.append(f"--working-directory={cwd}")
+        args += ["-e", "zsh", "-ic", shell_cmd + "; exec zsh -i"]
+        subprocess.Popen(args, env=clean_env(), **_DETACHED)
         return
     lit = json.dumps(shell_cmd, ensure_ascii=False)   # AppleScript shares JSON's escapes
     _osascript('tell application "Terminal" to activate',
@@ -196,7 +205,7 @@ def resume(session_id: str, cwd: str, paste_only: bool = False, launcher: str = 
     if not _SAFE_ID.match(session_id):
         return False
     run_in_new_terminal(f"cd {shlex.quote(cwd)} && claude --resume {shlex.quote(session_id)}",
-                        paste_only, launcher)
+                        paste_only, launcher, cwd)
     return True
 
 
@@ -220,9 +229,9 @@ def start(cwd: str, prompt: str = "", permission_mode: str = "acceptEdits",
             wt = Path(root).parent / f"{Path(root).name}-{stamp}"
             shell = (f"git -C {shlex.quote(root)} worktree add -b claude/{stamp} {shlex.quote(str(wt))} "
                      f"&& cd {shlex.quote(str(wt))} && {cmd}")
-            run_in_new_terminal(shell, paste_only, launcher)
+            run_in_new_terminal(shell, paste_only, launcher, str(wt.parent))
             return sid
-    run_in_new_terminal(f"cd {shlex.quote(cwd)} && {cmd}", paste_only, launcher)
+    run_in_new_terminal(f"cd {shlex.quote(cwd)} && {cmd}", paste_only, launcher, cwd)
     return sid
 
 
