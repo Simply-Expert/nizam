@@ -132,6 +132,13 @@ aside .agent-head .tw { width: 14px; color: var(--muted); font-size: 10px; curso
 </main>
 
 <div class="ctx" id="ctx"></div>
+<div class="modal-bg" id="ask">
+  <div class="modal" style="width:420px">
+    <h3 id="askTitle"></h3>
+    <div class="f"><input id="askInput" type="text"></div>
+    <div class="foot"><span id="askHint" style="flex:1;color:var(--muted);font-size:12px"></span><button id="askCancel">Cancel</button><button class="primary" id="askOk">Save</button></div>
+  </div>
+</div>
 <div class="modal-bg" id="modal">
   <div class="modal">
     <h3>New session</h3>
@@ -162,19 +169,54 @@ aside .agent-head .tw { width: 14px; color: var(--muted); font-size: 10px; curso
 const $ = (s, el=document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let DATA = null, SEL = load('sel', {kind:'all'}), OPEN = new Set(), COLLAPSED = new Set(load('collapsed', []));
+let DRAG = null;
 let showDone = load('showDone', false);
 $('#showDone').checked = showDone;
 
 function load(k, d) { try { const v = localStorage.getItem('nizam.'+k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function save(k, v) { try { localStorage.setItem('nizam.'+k, JSON.stringify(v)); } catch {} }
 
+function ask(title, value, hint) {
+  return new Promise(resolve => {
+    const m = $('#ask'), inp = $('#askInput');
+    $('#askTitle').textContent = title; $('#askHint').textContent = hint || ''; inp.value = value || '';
+    m.classList.add('open'); inp.focus(); inp.select();
+    const done = v => { m.classList.remove('open'); cleanup(); resolve(v); };
+    const onKey = e => { if (e.key === 'Enter') done(inp.value); if (e.key === 'Escape') done(null); e.stopPropagation(); };
+    const onOk = () => done(inp.value), onCancel = () => done(null);
+    const onBg = e => { if (e.target.id === 'ask') done(null); };
+    function cleanup() { inp.removeEventListener('keydown', onKey); $('#askOk').removeEventListener('click', onOk); $('#askCancel').removeEventListener('click', onCancel); m.removeEventListener('click', onBg); }
+    inp.addEventListener('keydown', onKey); $('#askOk').addEventListener('click', onOk); $('#askCancel').addEventListener('click', onCancel); m.addEventListener('click', onBg);
+  });
+}
+function toast(msg) {
+  let t = $('#toast');
+  if (!t) { t = document.createElement('div'); t.id = 'toast'; t.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--needs);color:#fff;padding:8px 14px;border-radius:8px;z-index:30;font-size:13px'; document.body.appendChild(t); }
+  t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3500);
+}
+
 async function api(path, body) {
   const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)} : {});
   return r.json();
 }
 
-async function refresh() {
-  try { DATA = await api('/api/board'); render(); } catch (e) { console.error(e); }
+let _lastKey = null;
+function busyEditing() {
+  return DRAG !== null || $('#ask').classList.contains('open') || $('#ctx').classList.contains('open') || $('#modal').classList.contains('open');
+}
+async function refresh(force) {
+  try {
+    const d = await api('/api/board');
+    // Re-rendering swaps the DOM under the cursor; only do it when something other than the clock changed.
+    const key = JSON.stringify(d, (k, v) => (k === 'ago' || k === 'generated_at') ? undefined : v);
+    DATA = d;
+    if (!force && key === _lastKey) { touchAgos(); return; }
+    if (busyEditing() && !force) return;
+    _lastKey = key; render();
+  } catch (e) { console.error(e); }
+}
+function touchAgos() {
+  for (const s of DATA.sessions) { const el = document.querySelector(`.card[data-id="${s.id}"] .ago`); if (el && el.textContent !== s.ago) el.textContent = s.ago; }
 }
 
 function counts(list) {
@@ -243,7 +285,6 @@ function renderSide(all) {
   wireAgentRows(side, agents);
 }
 
-let DRAG = null;
 function wireAgentRows(side, agents) {
   const rows = [...side.querySelectorAll('.row.agent')];
   rows.forEach(el => {
@@ -268,7 +309,7 @@ function wireAgentRows(side, agents) {
       const moved = agents.find(a => a.root === DRAG), target = agents.find(a => a.root === el.dataset.root);
       if (moved && target && moved.pinned !== target.pinned) await api('/api/agents/set', {root: DRAG, pinned: target.pinned});
       await api('/api/agents/order', {roots});
-      refresh();
+      DRAG = null; refresh(true);
     });
   });
 }
@@ -276,10 +317,10 @@ function wireAgentRows(side, agents) {
 function agentOf(root) { return DATA.agents.find(a => a.root === root); }
 async function renameAgent(root) {
   const a = agentOf(root); if (!a) return;
-  const name = prompt(`Display name for ${a.display} (leave empty to use the folder name)`, a.display_name);
+  const name = await ask(`Display name for ${a.display}`, a.display_name, 'Empty restores the folder name');
   if (name === null) return;
   await api('/api/agents/set', {root, name});
-  refresh();
+  refresh(true);
 }
 function openCtx(x, y, root) {
   const a = agentOf(root); if (!a) return;
@@ -292,7 +333,7 @@ function openCtx(x, y, root) {
     if (el.dataset.do === 'rename') return renameAgent(root);
     if (el.dataset.do === 'pin') await api('/api/agents/set', {root, pinned: !a.pinned});
     if (el.dataset.do === 'top') await api('/api/agents/order', {roots: [root, ...DATA.agents.map(z => z.root).filter(z => z !== root)]});
-    refresh();
+    refresh(true);
   }));
 }
 document.addEventListener('click', e => { if (!e.target.closest('#ctx')) $('#ctx').classList.remove('open'); });
@@ -335,7 +376,7 @@ async function onAction(e) {
   const act = e.currentTarget.dataset.act, id = e.currentTarget.dataset.id;
   const s = DATA.sessions.find(x => x.id === id);
   if (act === 'rename') {
-    const name = prompt('Session title', s.title);
+    const name = await ask('Session title', s.title, 'Empty restores the automatic title');
     if (name === null) return;
     await api(`/api/sessions/${id}/rename`, {name});
   } else if (act === 'open' || act === 'done' || act === 'reopen') {
@@ -392,7 +433,7 @@ $('#mGo').addEventListener('click', async () => {
   const first = p.prompt.trim().split('\n')[0];
   if (first) p.title = first.slice(0, 90);
   const r = await api('/api/start', p);
-  if (r.error) { alert(r.error); return; }
+  if (r.error) { toast(r.error); return; }
   $('#modal').classList.remove('open');
   setTimeout(refresh, 1500);
 });
