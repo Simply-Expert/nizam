@@ -131,11 +131,16 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"error": "not found"}, 404)
 
 
-def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
-    ensure_dirs()
-    Handler.board = Board()
+def make_server(board: Board, port: int) -> ThreadingHTTPServer:
+    Handler.board = board
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     PORT_FILE.write_text(str(port))
+    return httpd
+
+
+def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
+    ensure_dirs()
+    httpd = make_server(Board(), port)
     if open_browser:
         import subprocess
         threading.Timer(0.5, lambda: subprocess.Popen(["open", f"http://127.0.0.1:{port}/"])).start()

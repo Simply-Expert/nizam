@@ -63,6 +63,41 @@ def _strip_ours(hooks: dict) -> dict:
     return out
 
 
+VENV = NIZAM_DIR / "venv"
+VENV_PY = VENV / "bin" / "python"
+
+
+def _venv_ok() -> bool:
+    return VENV_PY.exists() and subprocess.run(
+        [str(VENV_PY), "-c", "import AppKit, WebKit"], capture_output=True).returncode == 0
+
+
+def ensure_venv() -> bool:
+    if _venv_ok():
+        return True
+    seed = next((p for p in ("/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3")
+                 if Path(p).exists()), None)
+    if not seed:
+        print("no python3 found for the menu-bar app venv"); return False
+    print(f"→ creating {VENV} and installing PyObjC (one-time)…")
+    subprocess.run([seed, "-m", "venv", str(VENV)], check=False)
+    subprocess.run([str(VENV_PY), "-m", "pip", "install", "--quiet",
+                    "pyobjc-framework-Cocoa", "pyobjc-framework-WebKit"], check=False)
+    return _venv_ok()
+
+
+def run_app(port: int) -> int:
+    from .terminal import clean_env
+    if not ensure_venv():
+        return 1
+    if os.path.realpath(sys.executable) != os.path.realpath(VENV_PY):
+        os.execve(str(VENV_PY), [str(VENV_PY), "-m", "nizam", "app", "--port", str(port)], clean_env())
+    if len(clean_env()) != len(os.environ):
+        os.execve(sys.executable, [sys.executable, "-m", "nizam", "app", "--port", str(port)], clean_env())
+    from .app import run
+    return run(port)
+
+
 def install_hooks() -> None:
     d = _load_settings()
     hooks = _strip_ours(d.get("hooks") or {})
@@ -110,7 +145,23 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("install", help="install Claude Code hooks")
     sub.add_parser("uninstall", help="remove Claude Code hooks")
     sub.add_parser("doctor", help="check wiring")
+    ap = sub.add_parser("app", help="run the menu-bar app (server included)")
+    ap.add_argument("--port", type=int, default=7331)
+    ap.add_argument("--quit", action="store_true", help="quit the running menu-bar app")
+    lg = sub.add_parser("login", help="start at login: on | off | status")
+    lg.add_argument("state", choices=("on", "off", "status"))
     a = p.parse_args(argv)
+    if a.cmd == "app":
+        if a.quit:
+            from .app import request_quit
+            return request_quit()
+        return run_app(a.port)
+    if a.cmd == "login":
+        from .app import login_enabled, set_login
+        if a.state != "status":
+            set_login(a.state == "on")
+        print("start at login:", "on" if login_enabled() else "off")
+        return 0
     if a.cmd == "serve":
         from .terminal import clean_env
         if len(clean_env()) != len(os.environ):
@@ -124,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
         subprocess.Popen(["open", f"http://127.0.0.1:{port}/"])
         return 0
     if a.cmd == "install":
-        install_hooks(); return 0
+        install_hooks(); ensure_venv(); return 0
     if a.cmd == "uninstall":
         uninstall_hooks(); return 0
     if a.cmd == "doctor":
