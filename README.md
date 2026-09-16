@@ -8,6 +8,7 @@ which is working, and which has finished and is waiting for your reply. It lives
 menu bar and a floating badge, and opens the same board in a popover or a browser.
 
 <p>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg" /></a>
   <img alt="macOS only" src="https://img.shields.io/badge/macOS-13%2B-lightgrey?logo=apple" />
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white" />
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-2.1.158%2B-orange" />
@@ -117,3 +118,7 @@ Claude Code 2.1.158 or newer. No third-party Python packages outside the venv.
 
 Nizam started as a rewrite of [claude-sessions-status](https://github.com/blink22/claude-sessions-status)
 after the folder-and-heuristics model stopped fitting how the agents were actually used.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
