@@ -40,7 +40,7 @@ bin/nizam login on     # start at login
 | **Agent** | A role you talk to, e.g. *Marketing*, *Backend*, *VA*. | The nearest folder above the session's start directory holding `CLAUDE.md`, `AGENTS.md` or a configured `.claude/`. Otherwise the start directory itself. |
 | **Area** | A standing topic inside an agent, e.g. `channels/email`, `campaigns/sept-2026`. | Any sub-folder of the agent holding `INSTRUCTIONS.md`. Areas nest. Folders without the marker (`data`, `scripts`, `shared`) are not areas. |
 | **Session** | One Claude Code conversation. | The transcript in `~/.claude/projects`. |
-| **Follow-up** | A dated one-off the agent owes, not yet a session. | `## YYYY-MM-DD (Day) — Title` sections in `FOLLOWUPS.md` at the agent root or inside an area. Read-only. |
+| **Follow-up** | A dated one-off the agent owes, not yet a session. | `## YYYY-MM-DD (Day) — [area] Title` sections in the one `FOLLOWUPS.md` at the agent root; the optional `[area]` tag files it under that area. Read-only. |
 
 Sessions fall into four states:
 
@@ -86,6 +86,7 @@ session it manages areas:
 /nizam area promote campaigns/sept-2026
 /nizam area archive referral
 /nizam followup add 2026-09-18 re-run the banner conversion script
+/nizam followup tag                 # add [area] tags to untagged items
 /nizam followup list
 /nizam followup done banner
 ```

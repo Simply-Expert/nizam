@@ -53,11 +53,12 @@ Turn an existing folder into an area by adding `INSTRUCTIONS.md` (seeded from an
 notes already there) and a journal if missing.
 
 ## `followup add <date> <what>`
-Follow-ups are dated, short-lived, one-off items that would otherwise be forgotten. They live in
-`FOLLOWUPS.md` at the agent root, or inside an area when the item belongs only to that area.
-The Nizam board shows them read-only, flags overdue ones, and can start a session from one.
+Follow-ups are dated, short-lived, one-off items that would otherwise be forgotten. An agent keeps
+**one** `FOLLOWUPS.md`, at the agent root, so the whole queue can be scanned in ten seconds. Never
+create a follow-ups file inside an area; tag the item with its area instead. The Nizam board shows
+the file read-only, flags overdue items, filters them by area, and can start a session from one.
 
-1. Create `FOLLOWUPS.md` if missing, with this header:
+1. Create `FOLLOWUPS.md` at the agent root if missing, with this header:
 
    ```markdown
    # Follow-ups — dated, short-lived, one-off
@@ -70,10 +71,20 @@ The Nizam board shows them read-only, flags overdue ones, and can start a sessio
 2. Add the item in date order, using exactly this heading shape so the board can parse it:
 
    ```markdown
-   ## 2026-09-18 (Fri) — Short imperative title
+   ## 2026-09-18 (Fri) — [email] Short imperative title
    One paragraph: the exact action, and why it matters, written so it can be picked up cold.
    Name the script, file or query to run. End with "Delete once <condition>."
    ```
+
+   The `[tag]` is the area the item belongs to: the area's folder name (`[email]`), or its path
+   from the agent root when the name alone is ambiguous (`[campaigns/sept-2026]`). Run `area list`
+   if unsure. Omit the tag for items that belong to the agent as a whole. A tagged item shows under
+   that area's chip on the board, and "Start session" opens in that area's folder.
+
+## `followup tag`
+Go through the untagged items in `FOLLOWUPS.md` and add the `[area]` tag to each one that clearly
+belongs to a single area, judging from its text. Leave cross-area items untagged. Change nothing
+else in the file and show the list of changes.
 
 ## `followup list`
 Print the items grouped as overdue, today, upcoming. Point out any item more than 7 days late and

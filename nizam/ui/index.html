@@ -399,7 +399,7 @@ function renderFollowup(d, f) {
     <div class="meta"><b>${esc(a ? a.display_name : '')}</b>${f.area?` › ${esc(f.area)}`:''} · follow-up · due ${esc(f.date)} <span class="tag due ${f.due}">${dueLabel(f)}</span></div>
     <div class="actions"><button class="primary" id="fuStart" title="Open a session here with this follow-up as the first prompt">Start session</button></div>
     <div class="msg">${esc(f.body || '(no details)')}</div>
-    <div class="path">${esc(f.cwd)}/FOLLOWUPS.md · read-only; the agent edits this file</div>`;
+    <div class="path">${esc(f.file)} · read-only; the agent edits this file</div>`;
   $('#fuStart').addEventListener('click', async () => {
     const last = DATA.prefs.last_start || {};
     const prompt = `Follow-up due ${f.date}: ${f.title}\n\n${(f.body || '').slice(0, 1500)}\n\nThis comes from FOLLOWUPS.md. When it is handled, record the outcome where it belongs and delete the item from that file.`;

@@ -1,7 +1,9 @@
 """Read-only view of each agent's FOLLOWUPS.md.
 
 The file stays the source of truth and the agent stays its editor; Nizam
-only parses `## YYYY-MM-DD (Day) — Title` sections and their body text.
+only parses `## YYYY-MM-DD (Day) — [area] Title` sections and their body.
+One file per agent is the convention; the optional [area] tag says which
+area an item belongs to.
 """
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ from datetime import date
 from pathlib import Path
 
 FILENAME = "FOLLOWUPS.md"
+_TAG = re.compile(r"^\[([^\]]+)\]\s*(.*)$")
 _HEAD = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\s*(?:[—–-]+\s*)?(.*)$")
 _cache: dict[Path, tuple[float, list[dict]]] = {}
 
@@ -47,6 +50,16 @@ def _parse(path: Path) -> list[dict]:
     return items
 
 
+def _resolve_tag(agent, tag: str):
+    """Area whose rel path or folder name equals the tag (case-insensitive)."""
+    t = tag.strip().strip("/").lower()
+    for a in agent.areas.values():
+        if a.rel.lower() == t:
+            return a
+    named = [a for a in agent.areas.values() if a.name.lower() == t]
+    return named[0] if len(named) == 1 else None
+
+
 def for_agent(agent) -> list[dict]:
     """Follow-ups at the agent root and inside each of its areas."""
     today = date.today()
@@ -59,10 +72,17 @@ def for_agent(agent) -> list[dict]:
             except ValueError:
                 continue
             days = (due - today).days
+            title, area_rel, cwd = it["title"], rel, folder
+            m = _TAG.match(title)
+            if m:
+                area = _resolve_tag(agent, m.group(1))
+                if area is not None:
+                    title, area_rel, cwd = m.group(2).strip() or title, area.rel, area.path
             fid = hashlib.md5(f"{agent.root}|{rel}|{it['date']}|{it['title']}".encode()).hexdigest()[:12]
             out.append({
-                "id": "f:" + fid, "agent": str(agent.root), "area": rel,
-                "cwd": str(folder), "date": it["date"], "title": it["title"], "body": it["body"],
+                "id": "f:" + fid, "agent": str(agent.root), "area": area_rel,
+                "cwd": str(cwd), "file": str(Path(folder) / FILENAME),
+                "date": it["date"], "title": title, "body": it["body"],
                 "days": days, "due": "overdue" if days < 0 else "today" if days == 0 else "upcoming",
             })
     out.sort(key=lambda f: f["date"])
