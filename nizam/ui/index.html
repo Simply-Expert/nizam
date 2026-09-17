@@ -44,7 +44,7 @@ textarea { min-height: 84px; resize: vertical; }
 .cnt .i { background: var(--inbox-bg); color: var(--inbox); }
 .cnt .f { background: var(--due-bg); color: var(--due); }
 .dot { font-size: 11px; width: 14px; display: inline-block; text-align: center; }
-.dot.needs { color: var(--needs); } .dot.working { color: var(--working); } .dot.inbox { color: var(--inbox); } .dot.done { color: var(--done); }
+.dot.needs { color: var(--needs); } .dot.working { color: var(--working); } .dot.inbox { color: var(--inbox); } .dot.closed { color: var(--muted); } .dot.done { color: var(--done); }
 .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--done-bg); color: var(--muted); }
 .tag.live { background: var(--inbox-bg); color: var(--inbox); }
 .tag.q { background: var(--needs-bg); color: var(--needs); }
@@ -81,12 +81,16 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .chip b { margin-left: 3px; color: var(--inbox); }
 .chip.agentchip { display: none; }
 .lsec { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); padding: 12px 12px 4px; font-weight: 600; }
-.lsec.needs { color: var(--needs); } .lsec.working { color: var(--working); } .lsec.inbox { color: var(--inbox); } .lsec.done { color: var(--done); }
+.lsec.needs { color: var(--needs); } .lsec.working { color: var(--working); } .lsec.inbox { color: var(--inbox); } .lsec.closed { color: var(--muted); } .lsec.done { color: var(--done); }
 .lsec span { font-weight: 500; }
 .item { display: grid; grid-template-columns: 16px 1fr auto; gap: 3px 8px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--line); }
 .item:hover { background: var(--hover); }
 .item.on { background: var(--accent-bg); }
 .item.done { opacity: .7; }
+.item.closed .t { font-weight: 500; }
+.item .rowdone { display: none; padding: 0 7px; font-size: 11px; line-height: 18px; }
+.item.closed:hover .rowdone { display: inline-block; }
+.item.closed:hover .agotxt { display: none; }
 .item .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .ago { color: var(--muted); font-size: 12px; }
 .item .where { grid-column: 2 / 4; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -105,7 +109,7 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .detail h1 .t:hover { color: var(--accent); }
 .detail .meta { color: var(--muted); font-size: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .detail .state { margin: 12px 0; display: flex; gap: 8px; align-items: center; font-weight: 600; }
-.detail .state.needs { color: var(--needs); } .detail .state.working { color: var(--working); } .detail .state.inbox { color: var(--inbox); } .detail .state.done { color: var(--done); }
+.detail .state.needs { color: var(--needs); } .detail .state.working { color: var(--working); } .detail .state.inbox { color: var(--inbox); } .detail .state.closed { color: var(--muted); } .detail .state.done { color: var(--done); }
 .detail .why { background: var(--needs-bg); padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; max-width: 820px; }
 .detail .actions { display: flex; gap: 8px; margin: 12px 0 14px; flex-wrap: wrap; }
 .detail .msg { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; white-space: pre-wrap; line-height: 1.55; max-width: 820px; overflow-wrap: anywhere; }
@@ -186,9 +190,9 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 <script>
 const $ = (s, el=document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const ORDER = {needs: 0, working: 1, inbox: 2, done: 3};
-const SECTION = {needs: 'Needs you', working: 'Working', inbox: 'Your turn', done: 'Done'};
-const DOT = {needs: '●', working: '◐', inbox: '○', done: '✓'};
+const ORDER = {needs: 0, working: 1, inbox: 2, closed: 3, done: 4};
+const SECTION = {needs: 'Needs you', working: 'Working', inbox: 'Your turn', closed: 'Closed', done: 'Done'};
+const DOT = {needs: '●', working: '◐', inbox: '●', closed: '○', done: '✓'};
 function load(k, d) { try { const v = localStorage.getItem('nizam.'+k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function save(k, v) { try { localStorage.setItem('nizam.'+k, JSON.stringify(v)); } catch {} }
 
@@ -212,10 +216,10 @@ async function refresh(force) {
   } catch (e) { console.error(e); }
 }
 function touchAgos() {
-  for (const s of DATA.sessions) { const el = document.querySelector(`.item[data-id="${s.id}"] .ago`); if (el && el.textContent !== s.ago) el.textContent = s.ago; }
+  for (const s of DATA.sessions) { const el = document.querySelector(`.item[data-id="${s.id}"] .agotxt`); if (el && el.textContent !== s.ago) el.textContent = s.ago; }
 }
 
-function counts(list) { const c = {needs:0, working:0, inbox:0, done:0}; for (const s of list) c[s.bucket]++; return c; }
+function counts(list) { const c = {needs:0, working:0, inbox:0, closed:0, done:0}; for (const s of list) c[s.bucket]++; return c; }
 function badges(c, late) { return `<span class="cnt">${late?`<b class="f" title="Follow-ups overdue or due today">◆${late}</b>`:''}${c.needs?`<b class="n">${c.needs}</b>`:''}${c.working?`<b class="w">${c.working}</b>`:''}${c.inbox?`<b class="i">${c.inbox}</b>`:''}</span>`; }
 function lateCount(root) { return (DATA.followups || []).filter(f => (!root || f.agent === root) && f.due !== 'upcoming').length; }
 function byAgent(root) { return DATA.sessions.filter(s => s.agent === root); }
@@ -338,7 +342,7 @@ function followupRow(f, showAgent) {
 function sessionRow(s) {
   const where = SEL.agent ? (s.area ? esc(s.area) : '') : esc(s.agent_name) + (s.area ? ' › ' + esc(s.area) : '');
   const p = s.bucket === 'needs' && s.detail ? `<span class="p why">${esc(s.detail)}</span>` : `<span class="p">${esc(lastPara(s.preview))}</span>`;
-  return `<div class="item ${s.bucket} ${CUR===s.id?'on':''}" data-id="${s.id}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span><span class="t">${esc(s.title)}</span><span class="ago">${esc(s.ago)}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
+  return `<div class="item ${s.bucket} ${CUR===s.id?'on':''}" data-id="${s.id}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span><span class="t">${esc(s.title)}</span><span class="ago"><span class="agotxt">${esc(s.ago)}</span>${s.bucket==='closed'?`<button class="rowdone" data-done="${s.id}" title="Mark done">Done ✓</button>`:''}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
 }
 function renderList() {
   const agent = agentOf(SEL.agent);
@@ -346,7 +350,7 @@ function renderList() {
   const allFu = followupsFor(SEL.agent, SEL.area);
   // Everything view only surfaces what is due; an agent's page shows its whole queue.
   const fus = SEL.agent ? allFu : allFu.filter(f => f.due !== 'upcoming');
-  let h = `<div class="head"><h2><span class="t">${agent ? esc(agent.display_name) : 'Everything'}</span><span class="n">${list.length}</span><button class="quiet" style="padding:2px 8px;font-size:12px" data-clear="1" title="Mark every exited 'Your turn' session here as done">Clear</button><button class="primary" style="padding:2px 8px;font-size:12px" data-newhere="1" title="Start a session here now · ⌥-click for options">＋ New${agent?' here':''}</button></h2>`;
+  let h = `<div class="head"><h2><span class="t">${agent ? esc(agent.display_name) : 'Everything'}</span><span class="n">${list.length}</span><button class="quiet" style="padding:2px 8px;font-size:12px" data-clear="1" title="Mark every Closed session here as done">Clear</button><button class="primary" style="padding:2px 8px;font-size:12px" data-newhere="1" title="Start a session here now · ⌥-click for options">＋ New${agent?' here':''}</button></h2>`;
   h += `<div class="chips"><span class="chip agentchip ${!SEL.agent?'on':''}" data-agent="">All</span>` + sortedAgents().filter(a => a.pinned || visible(byAgent(a.root)).length).map(a => `<span class="chip agentchip ${SEL.agent===a.root?'on':''}" data-agent="${esc(a.root)}">${esc(a.display_name)}</span>`).join('');
   if (agent && agent.areas.length) {
     h += `<span class="chip ${!SEL.area?'on':''}" data-ar="">all areas</span>` + agent.areas.map(ar => {
@@ -376,12 +380,13 @@ function renderList() {
   el.querySelectorAll('[data-ar]').forEach(c => c.addEventListener('click', () => { SEL.area = c.dataset.ar || null; save('sel', SEL); render(); }));
   el.querySelectorAll('[data-agent]').forEach(c => c.addEventListener('click', () => { SEL = {agent: c.dataset.agent || null, area: null}; save('sel', SEL); CUR = null; render(); }));
   el.querySelectorAll('[data-id]').forEach(c => c.addEventListener('click', () => { CUR = c.dataset.id; detailOpen = true; render(); }));
+  el.querySelectorAll('[data-done]').forEach(b => b.addEventListener('click', async e => { e.stopPropagation(); await api(`/api/sessions/${b.dataset.done}/done`, {}); refresh(true); }));
   el.querySelector('[data-newhere]').addEventListener('click', e => SEL.agent ? newHere(e, SEL.agent, SEL.area) : openModal());
   el.querySelector('[data-newhere]').addEventListener('contextmenu', e => { e.preventDefault(); openModal(SEL.agent, SEL.area); });
   el.querySelector('[data-clear]').addEventListener('click', async () => {
-    const n = list.filter(s => s.bucket === 'inbox' && !s.live).length;
-    if (!n) { toast('Nothing to clear: live sessions stay'); return; }
-    const ok = await ask(`Mark ${n} exited session${n>1?'s':''} as done?`, 'yes', 'Live sessions are left alone. Any of them reopens on new activity.');
+    const n = list.filter(s => s.bucket === 'closed').length;
+    if (!n) { toast('Nothing in Closed to clear'); return; }
+    const ok = await ask(`Mark ${n} closed session${n>1?'s':''} as done?`, 'yes', 'Open sessions are left alone. Any of them reopens on new activity.');
     if (ok === null) return;
     const r = await api('/api/sessions/done-all', {agent: SEL.agent, area: SEL.area});
     toast(`${r.marked} marked done`, true); refresh(true);

@@ -42,13 +42,14 @@ bin/nizam login on     # start at login
 | **Session** | One Claude Code conversation. | The transcript in `~/.claude/projects`. |
 | **Follow-up** | A dated one-off the agent owes, not yet a session. | `## YYYY-MM-DD (Day) — [area] Title` sections in `FOLLOWUPS.md` at the agent root, where an optional `[area]` tag files an item under that area, or in a self-contained area's own `FOLLOWUPS.md`. The board merges them. Read-only. |
 
-Sessions fall into four states:
+Sessions fall into five states:
 
 | State | Meaning | Source |
 |---|---|---|
 | **Needs you** | Claude is blocked: a permission prompt, `AskUserQuestion`, a plan to approve, or no progress for 5 minutes while busy. | Hook events |
 | **Working** | Claude is processing. | Claude's own runtime status file |
-| **Your turn** | Claude finished its turn and is waiting for you. | `Stop` hook, or idle status |
+| **Your turn** | Claude finished its turn in a session that is still open. | `Stop` hook, or idle status |
+| **Closed** | The session exited without being marked done. Ages into Done after two days. | Process gone |
 | **Done** | You marked it done, or it went two days without activity. New activity reopens it. | You |
 
 Done is deliberately manual. The old approach of guessing "finished" from the wording of Claude's
@@ -67,7 +68,7 @@ last message was wrong too often; you are the only one who knows a task is over.
 - **Follow-ups** appear under an agent's sessions, overdue in red and today in amber; *All agents*
   shows only what is due. **Start session** opens one with the follow-up as the first prompt. Nizam
   never edits the file: the agent records the outcome and deletes its own line.
-- **Clear** marks every exited *Your turn* session in the current view as done.
+- **Clear** marks every *Closed* session in the current view as done; hovering a Closed row shows a Done button.
 - Keys: `j`/`k` move, `Enter` jumps, `d` marks done, `n` starts a session, `Esc` closes.
 - Notifications fire when a session newly needs you.
 

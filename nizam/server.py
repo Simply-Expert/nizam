@@ -127,7 +127,7 @@ class Handler(BaseHTTPRequestHandler):
             want_area = body.get("area")
             n = 0
             for s in b.snapshot()["sessions"]:
-                if s["bucket"] != "inbox" or s["live"]:
+                if s["bucket"] != "closed":
                     continue
                 if want_agent and s["agent"] != want_agent:
                     continue

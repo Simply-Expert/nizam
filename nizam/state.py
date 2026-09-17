@@ -3,7 +3,8 @@
 Buckets:
   needs   — Claude is blocked on you (permission prompt, question, plan).
   working — Claude is processing.
-  inbox   — Claude finished its turn; your move, whenever you get to it.
+  inbox   — Claude finished its turn in a session that is still open.
+  closed  — the session exited without being marked done.
   done    — you marked it done, or it went 2 days without activity.
 Done is sticky until new activity lands on the session, which reopens it.
 """
@@ -302,11 +303,11 @@ class Board:
                 "started": t.first_ts or t.mtime,
                 "last_prompt": t.last_user_prompt[:300],
                 "preview": _preview(preview),
-                "question": _looks_like_question(preview) if bucket == "inbox" else False,
+                "question": _looks_like_question(preview) if bucket in ("inbox", "closed") else False,
                 "done": done,
                 "hooked": h is not None,
             })
-        order = {"needs": 0, "working": 1, "inbox": 2, "done": 3}
+        order = {"needs": 0, "working": 1, "inbox": 2, "closed": 3, "done": 4}
         sessions.sort(key=lambda s: (order[s["bucket"]], -s["last_activity"]))
         done_seen = 0
         kept = []
@@ -355,4 +356,4 @@ class Board:
             return "working", "Working", ""
         if live:
             return "inbox", "Turn finished", ""
-        return "inbox", "Exited", ""
+        return "closed", "Closed", ""
