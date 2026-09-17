@@ -53,12 +53,20 @@ Turn an existing folder into an area by adding `INSTRUCTIONS.md` (seeded from an
 notes already there) and a journal if missing.
 
 ## `followup add <date> <what>`
-Follow-ups are dated, short-lived, one-off items that would otherwise be forgotten. An agent keeps
-**one** `FOLLOWUPS.md`, at the agent root, so the whole queue can be scanned in ten seconds. Never
-create a follow-ups file inside an area; tag the item with its area instead. The Nizam board shows
-the file read-only, flags overdue items, filters them by area, and can start a session from one.
+Follow-ups are dated, short-lived, one-off items that would otherwise be forgotten. The Nizam board
+reads every `FOLLOWUPS.md` it finds (agent root and inside areas), merges them, flags overdue items,
+filters by area, and can start a session from one. It never writes these files; you do.
 
-1. Create `FOLLOWUPS.md` at the agent root if missing, with this header:
+**Where an item goes — you decide, using this rule of thumb:**
+- **Default: the agent root's `FOLLOWUPS.md`, with an `[area]` tag.** One queue the agent can scan
+  in ten seconds.
+- **An area's own `FOLLOWUPS.md`** only when that area is self-contained: it has its own plan or
+  status log, and its follow-ups would never be acted on from a root session (a campaign with a
+  dozen dated checks is the typical case). Items in an area file need no tag.
+- **Never both.** Once an area has its own file, all of that area's items live there; move any
+  tagged ones out of the root file when you create it, and say that you did.
+
+1. Create the chosen `FOLLOWUPS.md` if missing, with this header:
 
    ```markdown
    # Follow-ups — dated, short-lived, one-off
@@ -87,11 +95,13 @@ belongs to a single area, judging from its text. Leave cross-area items untagged
 else in the file and show the list of changes.
 
 ## `followup list`
-Print the items grouped as overdue, today, upcoming. Point out any item more than 7 days late and
+Aggregate first: read the root `FOLLOWUPS.md` **and** every `FOLLOWUPS.md` inside an area (run
+`area list` to find them), so nothing due in an area is missed from a root session. Print the
+items grouped as overdue, today, upcoming, each with its area. Point out any item more than 7 days late and
 ask whether to delete it or move it into a plan.
 
 ## `followup done <title or date>`
-Write the outcome where it belongs (the area's journal, a plan's status log), then delete the item
+Find the item in whichever file holds it. Write the outcome where it belongs (the area's journal, a plan's status log), then delete the item
 from `FOLLOWUPS.md`. The file is a queue, not a record.
 
 ## Rules

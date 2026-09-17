@@ -2,8 +2,8 @@
 
 The file stays the source of truth and the agent stays its editor; Nizam
 only parses `## YYYY-MM-DD (Day) — [area] Title` sections and their body.
-One file per agent is the convention; the optional [area] tag says which
-area an item belongs to.
+The root file is the default queue, where an optional [area] tag says which
+area an item belongs to; a self-contained area may keep its own file.
 """
 from __future__ import annotations
 
