@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import agents as agents_mod
+from . import followups as followups_mod
 from .claude_sessions import Runtime, Transcript, iter_transcripts, read_runtimes
 from .paths import EVENTS_FILE, STATE_FILE, ensure_dirs
 
@@ -317,6 +318,13 @@ class Board:
             kept.append(s)
         sessions = kept
         overrides = self.persist.data.get("agents", {})
+        # Pinned agents stay on the board even with no recent sessions.
+        for root, o in overrides.items():
+            if o.get("pinned") and root not in agents and Path(root).is_dir():
+                agents[root] = agents_mod.load_agent(Path(root)).to_dict()
+        followups: list[dict] = []
+        for root in agents:
+            followups.extend(followups_mod.for_agent(agents_mod.load_agent(Path(root))))
         for a in agents.values():
             o = overrides.get(a["root"], {})
             a["display_name"] = o.get("name") or a["name"]
@@ -324,7 +332,7 @@ class Board:
         for s in sessions:
             s["agent_name"] = agents[s["agent"]]["display_name"]
         return {"generated_at": now, "agents": sorted(agents.values(), key=lambda a: a["display_name"].lower()),
-                "sessions": sessions, "prefs": self.persist.data["prefs"],
+                "sessions": sessions, "followups": followups, "prefs": self.persist.data["prefs"],
                 "agent_order": self.persist.data.get("agent_order", [])}
 
     @staticmethod

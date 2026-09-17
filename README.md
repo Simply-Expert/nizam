@@ -40,6 +40,7 @@ bin/nizam login on     # start at login
 | **Agent** | A role you talk to, e.g. *Marketing*, *Backend*, *VA*. | The nearest folder above the session's start directory holding `CLAUDE.md`, `AGENTS.md` or a configured `.claude/`. Otherwise the start directory itself. |
 | **Area** | A standing topic inside an agent, e.g. `channels/email`, `campaigns/sept-2026`. | Any sub-folder of the agent holding `INSTRUCTIONS.md`. Areas nest. Folders without the marker (`data`, `scripts`, `shared`) are not areas. |
 | **Session** | One Claude Code conversation. | The transcript in `~/.claude/projects`. |
+| **Follow-up** | A dated one-off the agent owes, not yet a session. | `## YYYY-MM-DD (Day) — Title` sections in `FOLLOWUPS.md` at the agent root or inside an area. Read-only. |
 
 Sessions fall into four states:
 
@@ -63,6 +64,9 @@ last message was wrong too often; you are the only one who knows a task is over.
   an exited one with `claude --resume`. **New here** starts a session in that agent and area with
   your last-used settings; ⌥-click for the full dialog (prompt, permission mode, git worktree,
   paste-only).
+- **Follow-ups** appear under an agent's sessions, overdue in red and today in amber; *All agents*
+  shows only what is due. **Start session** opens one with the follow-up as the first prompt. Nizam
+  never edits the file: the agent records the outcome and deletes its own line.
 - **Clear** marks every exited *Your turn* session in the current view as done.
 - Keys: `j`/`k` move, `Enter` jumps, `d` marks done, `n` starts a session, `Esc` closes.
 - Notifications fire when a session newly needs you.
@@ -81,6 +85,9 @@ session it manages areas:
 /nizam area new email          # creates INSTRUCTIONS.md + JOURNAL-<year>.md
 /nizam area promote campaigns/sept-2026
 /nizam area archive referral
+/nizam followup add 2026-09-18 re-run the banner conversion script
+/nizam followup list
+/nizam followup done banner
 ```
 
 A folder becomes visible on the board the moment it gets an `INSTRUCTIONS.md`.

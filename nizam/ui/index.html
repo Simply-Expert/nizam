@@ -9,7 +9,7 @@
   --bg: #f6f7f9; --panel: #ffffff; --line: #e3e6ea; --text: #1a1d21; --muted: #6b7280;
   --needs: #d93025; --needs-bg: #fdecea; --working: #b26a00; --working-bg: #fff4dd;
   --inbox: #1a7f37; --inbox-bg: #e6f4ea; --done: #6b7280; --done-bg: #eef0f2;
-  --accent: #2563eb; --accent-bg: #e8effd; --hover: #f0f2f5;
+  --accent: #2563eb; --accent-bg: #e8effd; --hover: #f0f2f5; --due: #7c3aed; --due-bg: #f1eafd;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
 }
@@ -17,13 +17,13 @@
   --bg: #121417; --panel: #1b1e23; --line: #2a2f37; --text: #e6e8eb; --muted: #8b93a1;
   --needs: #ff6b62; --needs-bg: #3a1f1d; --working: #f0b04a; --working-bg: #3a2d14;
   --inbox: #4ccf7a; --inbox-bg: #16301f; --done: #8b93a1; --done-bg: #23272e;
-  --accent: #6ea8ff; --accent-bg: #1c2a44; --hover: #22262d;
+  --accent: #6ea8ff; --accent-bg: #1c2a44; --hover: #22262d; --due: #b79bff; --due-bg: #2a2140;
 }}
 :root[data-theme="dark"] {
   --bg: #121417; --panel: #1b1e23; --line: #2a2f37; --text: #e6e8eb; --muted: #8b93a1;
   --needs: #ff6b62; --needs-bg: #3a1f1d; --working: #f0b04a; --working-bg: #3a2d14;
   --inbox: #4ccf7a; --inbox-bg: #16301f; --done: #8b93a1; --done-bg: #23272e;
-  --accent: #6ea8ff; --accent-bg: #1c2a44; --hover: #22262d;
+  --accent: #6ea8ff; --accent-bg: #1c2a44; --hover: #22262d; --due: #b79bff; --due-bg: #2a2140;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; background: var(--bg); }
@@ -42,6 +42,7 @@ textarea { min-height: 84px; resize: vertical; }
 .cnt .n { background: var(--needs-bg); color: var(--needs); }
 .cnt .w { background: var(--working-bg); color: var(--working); }
 .cnt .i { background: var(--inbox-bg); color: var(--inbox); }
+.cnt .f { background: var(--due-bg); color: var(--due); }
 .dot { font-size: 11px; width: 14px; display: inline-block; text-align: center; }
 .dot.needs { color: var(--needs); } .dot.working { color: var(--working); } .dot.inbox { color: var(--inbox); } .dot.done { color: var(--done); }
 .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--done-bg); color: var(--muted); }
@@ -91,6 +92,10 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .item .where { grid-column: 2 / 4; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .p { grid-column: 2 / 4; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .p.why { color: var(--needs); }
+.dot.fu { color: var(--muted); font-size: 9px; } .dot.fu.overdue { color: var(--needs); } .dot.fu.today { color: var(--working); }
+.ago.due.overdue { color: var(--needs); font-weight: 600; } .ago.due.today { color: var(--working); font-weight: 600; }
+.lsec.fu { color: var(--due); }
+.tag.due.overdue { background: var(--needs-bg); color: var(--needs); } .tag.due.today { background: var(--working-bg); color: var(--working); }
 .empty { color: var(--muted); padding: 40px 12px; text-align: center; }
 
 /* ---- detail ---- */
@@ -211,7 +216,8 @@ function touchAgos() {
 }
 
 function counts(list) { const c = {needs:0, working:0, inbox:0, done:0}; for (const s of list) c[s.bucket]++; return c; }
-function badges(c) { return `<span class="cnt">${c.needs?`<b class="n">${c.needs}</b>`:''}${c.working?`<b class="w">${c.working}</b>`:''}${c.inbox?`<b class="i">${c.inbox}</b>`:''}</span>`; }
+function badges(c, late) { return `<span class="cnt">${late?`<b class="f" title="Follow-ups overdue or due today">◆${late}</b>`:''}${c.needs?`<b class="n">${c.needs}</b>`:''}${c.working?`<b class="w">${c.working}</b>`:''}${c.inbox?`<b class="i">${c.inbox}</b>`:''}</span>`; }
+function lateCount(root) { return (DATA.followups || []).filter(f => (!root || f.agent === root) && f.due !== 'upcoming').length; }
 function byAgent(root) { return DATA.sessions.filter(s => s.agent === root); }
 function agentOf(root) { return DATA.agents.find(a => a.root === root); }
 function lastPara(s) { const p = (s || '').split(/\n\s*\n/).map(x => x.trim()).filter(Boolean); return p[p.length - 1] || ''; }
@@ -242,13 +248,13 @@ function render() {
 function renderSide() {
   const all = visible(DATA.sessions);
   let h = `<div class="brand">Nizam <span class="ar">نظام</span><span class="sp"></span><button class="primary" id="newBtn" title="New session (n)">＋</button></div>`;
-  h += `<div class="row ${!SEL.agent?'on':''}" data-a=""><span class="name">All agents</span>${badges(counts(all))}</div>`;
+  h += `<div class="row ${!SEL.agent?'on':''}" data-a=""><span class="name">All agents</span>${badges(counts(all), lateCount(null))}</div>`;
   h += `<div class="sec">Agents</div>`;
   const agents = sortedAgents();
   for (const a of agents) {
     const list = visible(byAgent(a.root));
-    if (!list.length && !showDone && !a.pinned) continue;
-    h += `<div class="row agent ${SEL.agent===a.root?'on':''}" draggable="true" data-root="${esc(a.root)}" data-a="${esc(a.root)}" title="${esc(a.display)}\nDrag to reorder · right-click to rename or pin">${a.pinned?'<span class="pin">📌</span>':''}<span class="name">${esc(a.display_name)}</span>${badges(counts(list))}</div>`;
+    if (!list.length && !showDone && !a.pinned && !lateCount(a.root)) continue;
+    h += `<div class="row agent ${SEL.agent===a.root?'on':''}" draggable="true" data-root="${esc(a.root)}" data-a="${esc(a.root)}" title="${esc(a.display)}\nDrag to reorder · right-click to rename or pin">${a.pinned?'<span class="pin">📌</span>':''}<span class="name">${esc(a.display_name)}</span>${badges(counts(list), lateCount(a.root))}</div>`;
   }
   h += `<div class="foot"><label class="chk"><input type="checkbox" id="showDone" ${showDone?'checked':''}> Show done</label></div>`;
   const side = $('#side'); side.innerHTML = h;
@@ -311,25 +317,61 @@ function openCtx(x, y, root) {
 document.addEventListener('click', e => { if (!e.target.closest('#ctx')) $('#ctx').classList.remove('open'); });
 
 /* ---------- list ---------- */
+let NAV = [];
+function followupsFor(agentRoot, areaRel) {
+  let f = DATA.followups || [];
+  if (agentRoot) f = f.filter(x => x.agent === agentRoot);
+  if (agentRoot && areaRel) f = f.filter(x => x.area && (x.area === areaRel || x.area.startsWith(areaRel + '/')));
+  return f;
+}
+function dueLabel(f) {
+  if (f.days === 0) return 'today';
+  if (f.days === 1) return 'tomorrow';
+  if (f.days === -1) return 'yesterday';
+  return f.days < 0 ? `${-f.days}d late` : `in ${f.days}d`;
+}
+function followupRow(f, showAgent) {
+  const a = agentOf(f.agent);
+  const where = (showAgent && a ? esc(a.display_name) : '') + (f.area ? (showAgent ? ' › ' : '') + esc(f.area) : '');
+  return `<div class="item fu ${f.due} ${CUR===f.id?'on':''}" data-id="${f.id}"><span class="dot fu ${f.due}">◆</span><span class="t">${esc(f.title)}</span><span class="ago due ${f.due}">${dueLabel(f)}</span>${where?`<span class="where">${where}</span>`:''}<span class="p">${esc((f.body || '').split('\n')[0])}</span></div>`;
+}
+function sessionRow(s) {
+  const where = SEL.agent ? (s.area ? esc(s.area) : '') : esc(s.agent_name) + (s.area ? ' › ' + esc(s.area) : '');
+  const p = s.bucket === 'needs' && s.detail ? `<span class="p why">${esc(s.detail)}</span>` : `<span class="p">${esc(lastPara(s.preview))}</span>`;
+  return `<div class="item ${s.bucket} ${CUR===s.id?'on':''}" data-id="${s.id}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span><span class="t">${esc(s.title)}</span><span class="ago">${esc(s.ago)}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
+}
 function renderList() {
   const agent = agentOf(SEL.agent);
   const list = currentList();
+  const allFu = followupsFor(SEL.agent, SEL.area);
+  // Everything view only surfaces what is due; an agent's page shows its whole queue.
+  const fus = SEL.agent ? allFu : allFu.filter(f => f.due !== 'upcoming');
   let h = `<div class="head"><h2><span class="t">${agent ? esc(agent.display_name) : 'Everything'}</span><span class="n">${list.length}</span><button class="quiet" style="padding:2px 8px;font-size:12px" data-clear="1" title="Mark every exited 'Your turn' session here as done">Clear</button><button class="primary" style="padding:2px 8px;font-size:12px" data-newhere="1" title="Start a session here now · ⌥-click for options">＋ New${agent?' here':''}</button></h2>`;
-  h += `<div class="chips"><span class="chip agentchip ${!SEL.agent?'on':''}" data-agent="">All</span>` + sortedAgents().filter(a => visible(byAgent(a.root)).length).map(a => `<span class="chip agentchip ${SEL.agent===a.root?'on':''}" data-agent="${esc(a.root)}">${esc(a.display_name)}</span>`).join('');
+  h += `<div class="chips"><span class="chip agentchip ${!SEL.agent?'on':''}" data-agent="">All</span>` + sortedAgents().filter(a => a.pinned || visible(byAgent(a.root)).length).map(a => `<span class="chip agentchip ${SEL.agent===a.root?'on':''}" data-agent="${esc(a.root)}">${esc(a.display_name)}</span>`).join('');
   if (agent && agent.areas.length) {
     h += `<span class="chip ${!SEL.area?'on':''}" data-ar="">all areas</span>` + agent.areas.map(ar => {
       const n = visible(byAgent(agent.root)).filter(s => s.area && (s.area === ar.rel || s.area.startsWith(ar.rel + '/'))).length;
       return `<span class="chip ${SEL.area===ar.rel?'on':''}" data-ar="${esc(ar.rel)}" title="${esc(ar.rel)}">${'· '.repeat(ar.depth)}${esc(ar.name)}${n?`<b>${n}</b>`:''}</span>`; }).join('');
   }
   h += `</div></div>`;
+  NAV = [];
+  const open = list.filter(s => s.bucket !== 'done'), done = list.filter(s => s.bucket === 'done');
+  const section = (cls, label, n) => `<div class="lsec ${cls}">${label} <span>${n}</span></div>`;
+  const fuHtml = () => {
+    if (!fus.length) return '';
+    const late = fus.filter(f => f.due === 'overdue').length;
+    fus.forEach(f => NAV.push(f.id));
+    return section('fu', SEL.agent ? 'Follow-ups' : 'Due', fus.length + (late && SEL.agent ? ` · ${late} late` : '')) + fus.map(f => followupRow(f, !SEL.agent)).join('');
+  };
+  if (!SEL.agent) h += fuHtml();
   let last = null;
-  for (const s of list) {
-    if (s.bucket !== last) { h += `<div class="lsec ${s.bucket}">${SECTION[s.bucket]} <span>${list.filter(x => x.bucket === s.bucket).length}</span></div>`; last = s.bucket; }
-    const where = SEL.agent ? (s.area ? esc(s.area) : '') : esc(s.agent_name) + (s.area ? ' › ' + esc(s.area) : '');
-    const p = s.bucket === 'needs' && s.detail ? `<span class="p why">${esc(s.detail)}</span>` : `<span class="p">${esc(lastPara(s.preview))}</span>`;
-    h += `<div class="item ${s.bucket} ${CUR===s.id?'on':''}" data-id="${s.id}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span><span class="t">${esc(s.title)}</span><span class="ago">${esc(s.ago)}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
+  for (const s of open) {
+    if (s.bucket !== last) { h += section(s.bucket, SECTION[s.bucket], open.filter(x => x.bucket === s.bucket).length); last = s.bucket; }
+    NAV.push(s.id); h += sessionRow(s);
   }
-  if (!list.length) h += `<div class="empty">${SEL.agent ? 'Nothing waiting from this agent' : 'Nothing waiting'}</div>`;
+  if (SEL.agent) h += fuHtml();
+  if (done.length) { h += section('done', SECTION.done, done.length); done.forEach(s => { NAV.push(s.id); h += sessionRow(s); }); }
+  if (!NAV.length) h += `<div class="empty">${SEL.agent ? 'Nothing waiting from this agent' : 'Nothing waiting'}</div>`;
   const el = $('#list'); el.innerHTML = h;
   el.querySelectorAll('[data-ar]').forEach(c => c.addEventListener('click', () => { SEL.area = c.dataset.ar || null; save('sel', SEL); render(); }));
   el.querySelectorAll('[data-agent]').forEach(c => c.addEventListener('click', () => { SEL = {agent: c.dataset.agent || null, area: null}; save('sel', SEL); CUR = null; render(); }));
@@ -342,15 +384,35 @@ function renderList() {
     const ok = await ask(`Mark ${n} exited session${n>1?'s':''} as done?`, 'yes', 'Live sessions are left alone. Any of them reopens on new activity.');
     if (ok === null) return;
     const r = await api('/api/sessions/done-all', {agent: SEL.agent, area: SEL.area});
-    toast(`${r.marked} marked done`); refresh(true);
+    toast(`${r.marked} marked done`, true); refresh(true);
   });
-  if ((!CUR || !list.some(s => s.id === CUR)) && list.length && window.innerWidth > 760) { CUR = list[0].id; renderListSelection(); }
+  if ((!CUR || !NAV.includes(CUR)) && NAV.length && window.innerWidth > 760) { CUR = NAV[0]; renderListSelection(); }
 }
 function renderListSelection() { document.querySelectorAll('.item').forEach(i => i.classList.toggle('on', i.dataset.id === CUR)); }
 
 /* ---------- detail ---------- */
+function renderFollowup(d, f) {
+  const a = agentOf(f.agent);
+  d.innerHTML = `
+    <button class="back quiet" id="back">‹ Back</button>
+    <h1>${esc(f.title)}</h1>
+    <div class="meta"><b>${esc(a ? a.display_name : '')}</b>${f.area?` › ${esc(f.area)}`:''} · follow-up · due ${esc(f.date)} <span class="tag due ${f.due}">${dueLabel(f)}</span></div>
+    <div class="actions"><button class="primary" id="fuStart" title="Open a session here with this follow-up as the first prompt">Start session</button></div>
+    <div class="msg">${esc(f.body || '(no details)')}</div>
+    <div class="path">${esc(f.cwd)}/FOLLOWUPS.md · read-only; the agent edits this file</div>`;
+  $('#fuStart').addEventListener('click', async () => {
+    const last = DATA.prefs.last_start || {};
+    const prompt = `Follow-up due ${f.date}: ${f.title}\n\n${(f.body || '').slice(0, 1500)}\n\nThis comes from FOLLOWUPS.md. When it is handled, record the outcome where it belongs and delete the item from that file.`;
+    const r = await api('/api/start', {cwd: f.cwd, prompt, permission_mode: last.permission_mode || 'acceptEdits', title: f.title.slice(0, 90)});
+    if (r.error) { toast(r.error); return; }
+    toast('Session started for this follow-up', true); setTimeout(() => refresh(true), 1500);
+  });
+  $('#back').addEventListener('click', () => { detailOpen = false; render(); });
+}
 function renderDetail() {
   const d = $('#detail');
+  const f = (DATA.followups || []).find(x => x.id === CUR);
+  if (f) { d.classList.toggle('open', detailOpen); return renderFollowup(d, f); }
   const s = DATA.sessions.find(x => x.id === CUR);
   d.classList.toggle('open', detailOpen && !!s);
   if (!s) { d.innerHTML = `<div class="empty">Select a session</div>`; return; }
@@ -457,13 +519,13 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { $('#modal').classList.remove('open'); $('#ctx').classList.remove('open'); if (detailOpen) { detailOpen = false; render(); } }
   if (e.key === 'n' && !e.metaKey && !e.ctrlKey) openModal();
   if (e.key === 'j' || e.key === 'k' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    const list = currentList(); if (!list.length) return;
-    let i = list.findIndex(s => s.id === CUR); i = Math.max(0, Math.min(list.length - 1, i + ((e.key === 'j' || e.key === 'ArrowDown') ? 1 : -1)));
-    CUR = list[i].id; renderListSelection(); renderDetail(); e.preventDefault();
+    if (!NAV.length) return;
+    let i = NAV.indexOf(CUR); i = Math.max(0, Math.min(NAV.length - 1, i + ((e.key === 'j' || e.key === 'ArrowDown') ? 1 : -1)));
+    CUR = NAV[i]; renderListSelection(); renderDetail(); e.preventDefault();
     const el = document.querySelector(`.item[data-id="${CUR}"]`); if (el) el.scrollIntoView({block: 'nearest'});
   }
   if (e.key === 'd' && CUR) { const s = DATA.sessions.find(x => x.id === CUR); if (s && s.bucket !== 'done') api(`/api/sessions/${CUR}/done`, {}).then(() => refresh(true)); }
-  if (e.key === 'Enter' && CUR) api(`/api/sessions/${CUR}/open`, {});
+  if (e.key === 'Enter' && CUR && !CUR.startsWith('f:')) api(`/api/sessions/${CUR}/open`, {});
 });
 
 refresh(true);
