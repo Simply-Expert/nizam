@@ -2,66 +2,17 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
-import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-from .paths import CLAUDE_SETTINGS, EVENTS_FILE, PORT_FILE, NIZAM_DIR, ensure_dirs
-
-
+from . import providers
+from .paths import EVENTS_FILE, PORT_FILE, NIZAM_DIR, ensure_dirs
 
 def _python() -> str:
     return sys.executable or "python3"
-
-
-def _hook_command() -> str:
-    return f"{_python()} {Path(__file__).with_name('hook.py')}"
-
-
-HOOK_EVENTS = {
-    "SessionStart": None,
-    "UserPromptSubmit": None,
-    "Stop": None,
-    "SessionEnd": None,
-    "Notification": "permission_prompt|idle_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input",
-    "PreToolUse": "AskUserQuestion|ExitPlanMode",
-    "PostToolUse": "AskUserQuestion|ExitPlanMode",
-    "ElicitationResult": None,
-}
-MARK = "nizam/hook.py"
-
-
-def _load_settings() -> dict:
-    try:
-        return json.loads(CLAUDE_SETTINGS.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def _save_settings(d: dict) -> None:
-    bak = CLAUDE_SETTINGS.with_suffix(".json.bak-nizam")
-    if CLAUDE_SETTINGS.exists() and not bak.exists():
-        shutil.copy2(CLAUDE_SETTINGS, bak)
-    tmp = CLAUDE_SETTINGS.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(d, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.replace(tmp, CLAUDE_SETTINGS)
-
-
-def _strip_ours(hooks: dict) -> dict:
-    out = {}
-    for ev, groups in hooks.items():
-        kept = []
-        for g in groups or []:
-            inner = [h for h in g.get("hooks", []) if MARK not in str(h.get("command", ""))]
-            if inner:
-                kept.append({**g, "hooks": inner})
-        if kept:
-            out[ev] = kept
-    return out
 
 
 VENV = NIZAM_DIR / "venv"
@@ -108,46 +59,35 @@ def run_app(port: int, detach: bool = False) -> int:
 
 
 SKILL_SRC = Path(__file__).resolve().parents[1] / "skills" / "nizam" / "SKILL.md"
-SKILL_DST = Path.home() / ".claude" / "skills" / "nizam" / "SKILL.md"
+
+
+def _say(lines: list[str]) -> None:
+    for line in lines:
+        print(line)
 
 
 def install_skill() -> None:
     if not SKILL_SRC.exists():
         return
-    SKILL_DST.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(SKILL_SRC, SKILL_DST)
-    print(f"✓ /nizam skill installed at {SKILL_DST}")
+    for p in providers.active():
+        _say(p.install_skill(SKILL_SRC))
 
 
 def install_hooks() -> None:
-    d = _load_settings()
-    hooks = _strip_ours(d.get("hooks") or {})
-    for ev, matcher in HOOK_EVENTS.items():
-        g = {"hooks": [{"type": "command", "command": _hook_command(), "timeout": 5, "async": True}]}
-        if matcher:
-            g["matcher"] = matcher
-        hooks.setdefault(ev, []).append(g)
-    d["hooks"] = hooks
-    _save_settings(d)
+    for p in providers.active():
+        _say(p.install_hooks())
     ensure_dirs()
-    print(f"✓ hooks installed in {CLAUDE_SETTINGS} (backup: settings.json.bak-nizam)")
-    print("  Live sessions pick them up on their next event; no restart needed.")
 
 
 def uninstall_hooks() -> None:
-    d = _load_settings()
-    d["hooks"] = _strip_ours(d.get("hooks") or {})
-    if not d["hooks"]:
-        d.pop("hooks")
-    _save_settings(d)
-    print("✓ nizam hooks removed")
+    for p in providers.active():
+        _say(p.uninstall_hooks())
     from .launch import login_enabled, set_login
     if login_enabled():
         set_login(False)
         print("✓ start-at-login removed")
-    if SKILL_DST.exists():
-        SKILL_DST.unlink()
-        print("✓ /nizam skill removed")
+    for p in providers.active():
+        _say(p.uninstall_skill())
     from .routines import remove_all
     n = remove_all()
     if n:
@@ -156,16 +96,13 @@ def uninstall_hooks() -> None:
 
 def doctor() -> int:
     ok = True
-    d = _load_settings()
-    ours = sum(1 for gs in (d.get("hooks") or {}).values() for g in gs
-               for h in g.get("hooks", []) if MARK in str(h.get("command", "")))
-    print(f"hooks installed: {ours}/{len(HOOK_EVENTS)}")
-    ok &= ours == len(HOOK_EVENTS)
     from .state import events_summary
     size, count, span = events_summary()
     print(f"events file: {EVENTS_FILE} ({size} bytes, {count} events over {span:.1f}d)")
-    from .paths import CLAUDE_SESSIONS
-    print(f"runtime files: {len(list(CLAUDE_SESSIONS.glob('*.json'))) if CLAUDE_SESSIONS.is_dir() else 0}")
+    for p in providers.active():
+        fine, lines = p.doctor()
+        _say(lines)
+        ok &= fine
     from . import routines
     issues = routines.audit()
     print(f"routine schedules: {len(routines.installed())} installed, {len(issues)} out of step")
@@ -249,8 +186,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--port", type=int, default=7331)
     s.add_argument("--open", action="store_true", help="open the board in the browser")
     sub.add_parser("open", help="open the board in the browser")
-    sub.add_parser("install", help="install Claude Code hooks")
-    sub.add_parser("uninstall", help="remove Claude Code hooks")
+    sub.add_parser("install", help="install the hooks and the /nizam skill")
+    sub.add_parser("uninstall", help="remove the hooks and the /nizam skill")
     sub.add_parser("doctor", help="check wiring")
     ap = sub.add_parser("app", help="run the menu-bar app (server included)")
     ap.add_argument("--port", type=int, default=7331)
@@ -297,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "serve":
         from .terminal import clean_env
         if len(clean_env()) != len(os.environ):
-            # Re-exec so nothing spawned later inherits a Claude session's markers.
+            # Re-exec so nothing spawned later inherits an agent session's markers.
             os.execve(sys.executable, [sys.executable, "-m", "nizam", *sys.argv[1:]], clean_env())
         from .server import serve
         serve(a.port, a.open)

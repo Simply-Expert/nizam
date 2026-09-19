@@ -14,6 +14,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import providers
 from .agents import find_agent_root
 from .paths import NIZAM_DIR
 
@@ -165,7 +166,7 @@ def _send(root: Path, to: str, body: str) -> dict:
         raise Refused(f"no peer named '{to}'; `nizam request peers` lists who this agent can write to")
     if not peer.root.is_dir():
         raise Refused(f"the folder for '{to}' is missing; tell the user")
-    session = os.environ.get("CLAUDE_CODE_SESSION_ID") or None
+    session = providers.current_session_id()
     idx = index()
     if session and any(session in r["sessions"] for r in idx.values()):
         raise Refused("this session was started from a request, so it cannot send one; tell the user instead")

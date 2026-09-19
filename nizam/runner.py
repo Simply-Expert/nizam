@@ -20,7 +20,9 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from . import providers
 from . import routines as R
+from .providers.base import Provider
 from .terminal import clean_env
 
 AGENT_WAIT = 60 * 60          # how long to queue behind another routine of the same agent
@@ -40,7 +42,7 @@ HEADLESS = (
 
 def _login_path() -> str:
     """launchd hands jobs a bare PATH; ask the user's login shell for the real one."""
-    extra = [str(Path.home() / ".local/bin"), str(Path.home() / ".claude/local"),
+    extra = [str(Path.home() / ".local/bin"), *(str(d) for p in providers.active() for d in p.cli_dirs),
              "/opt/homebrew/bin", "/usr/local/bin"]
     found = ""
     try:
@@ -161,36 +163,28 @@ def _wait_for_network(limit: float = 90) -> None:
             time.sleep(3)
 
 
-def _attempt(r: R.Routine, claude: str, env: dict, log: Path) -> dict:
+def _attempt(r: R.Routine, p: Provider, exe: str, env: dict, log: Path) -> dict:
     sid = str(uuid.uuid4())
-    cmd = [claude, "-p", "--output-format", "stream-json", "--verbose", "--session-id", sid,
-           "--append-system-prompt", HEADLESS.format(name=r.name)]
-    if r.meta.get("model"):
-        cmd += ["--model", r.meta["model"]]
-    if r.meta.get("permission_mode"):
-        cmd += ["--permission-mode", r.meta["permission_mode"]]
-    for key, flag in (("allowed_tools", "--allowedTools"), ("disallowed_tools", "--disallowedTools")):
-        tools = R.split_list(r.meta.get(key, ""))
-        if tools:
-            cmd += [flag, ",".join(tools)]
+    cmd = p.headless_command(exe, sid, HEADLESS.format(name=r.name), r.meta)
     prompt = f"Current date/time: {datetime.now().astimezone():%Y-%m-%d %H:%M %Z (%A)}\n\n{r.prompt}\n"
 
     started = time.time()
     proc = subprocess.Popen(cmd, cwd=str(r.cwd), env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, errors="replace", start_new_session=True)
     assert proc.stdin
-    result: dict = {}
+    results: list = []
     tail: list[str] = []
 
     def on_line(line: str) -> None:
+        res = p.headless_result(line)
+        if res:
+            results.append(res)
+            return
         try:
-            ev = json.loads(line)
-        except ValueError:
+            json.loads(line)
+        except ValueError:            # not structured output, so likely the CLI's own error text
             tail.append(line.strip())
             del tail[:-5]
-            return
-        if isinstance(ev, dict) and ev.get("type") == "result":
-            result.update(ev)
 
     def feed(stdin=proc.stdin) -> None:
         try:
@@ -202,21 +196,21 @@ def _attempt(r: R.Routine, claude: str, env: dict, log: Path) -> dict:
     threading.Thread(target=feed, daemon=True).start()
     timed_out, slept = _watch(proc, r.timeout, log, on_line)
 
-    text = str(result.get("result") or "")
-    outcome, reason, body = R.parse_outcome(text)
-    status = R.decide_status(timed_out, proc.returncode, bool(result.get("is_error")), outcome)
+    result = results[-1] if results else None
+    outcome, reason, body = R.parse_outcome(result.text if result else "")
+    status = R.decide_status(timed_out, proc.returncode, bool(result and result.is_error), outcome)
     if status == "timed_out":
         summary = _timeout_note(r, slept)
     elif status == "errored":
-        summary = body or "\n".join(tail) or f"claude exited with code {proc.returncode}"
+        summary = body or "\n".join(tail) or f"{p.cli} exited with code {proc.returncode}"
     elif status == "incomplete":
         summary = (f"{reason}\n\n" if reason else "" if outcome else
                    "The run ended without an OUTCOME line, so nothing confirms the work was done.\n\n") + body
     else:
         summary = body
     return {"status": status, "exit_code": proc.returncode, "session": sid, "summary": summary[-1500:],
-            "duration": int(time.time() - started), "slept": int(slept), "cost": result.get("total_cost_usd"),
-            "turns": result.get("num_turns")}
+            "duration": int(time.time() - started), "slept": int(slept),
+            "cost": result.cost if result else None, "turns": result.turns if result else None}
 
 
 def run(path: str, scheduled: bool = False) -> int:
@@ -251,9 +245,10 @@ def run(path: str, scheduled: bool = False) -> int:
         env.update(R.read_env_file(r.cwd / r.meta["env_file"]))
     env["PATH"] = _login_path()
     env["NIZAM_ROUTINE"] = r.id
-    claude = "" if r.command else shutil.which("claude", path=env["PATH"])
-    if not r.command and not claude:
-        return finish("errored", "The claude command was not found on the login shell's PATH.", 2)
+    p = providers.get(r.meta.get("provider"))
+    exe = "" if r.command else shutil.which(p.cli, path=env["PATH"])
+    if not r.command and not exe:
+        return finish("errored", f"The {p.cli} command was not found on the login shell's PATH.", 2)
     if scheduled:
         _wait_for_network()
 
@@ -274,7 +269,7 @@ def run(path: str, scheduled: bool = False) -> int:
                 # No retry: a script that failed early may still have written half its rows.
                 res = _script(r, env, log)
                 break
-            res = _attempt(r, claude or "", env, log)
+            res = _attempt(r, p, exe or "", env, log)
             sessions.append(res.pop("session"))
             R.record({**base, "status": "running", "sessions": sessions})
             if res["status"] != "errored" or res["duration"] > QUICK_FAILURE or attempt == 2:

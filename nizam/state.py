@@ -1,9 +1,9 @@
 """Turn raw signals into a board.
 
 Buckets:
-  needs   — Claude is blocked on you (permission prompt, question, plan).
-  working — Claude is processing.
-  inbox   — Claude finished its turn in a session that is still open.
+  needs   — the agent is blocked on you (permission prompt, question, plan).
+  working — the agent is processing.
+  inbox   — the agent finished its turn in a session that is still open.
   closed  — the session exited without being marked done.
   done    — you marked it done, or it went 2 days without activity.
 Done is sticky until new activity lands on the session, which reopens it.
@@ -22,7 +22,8 @@ from . import agents as agents_mod
 from . import followups as followups_mod
 from . import requests as requests_mod
 from . import routines as routines_mod
-from .claude_sessions import Runtime, Transcript, iter_transcripts, read_runtimes
+from . import providers
+from .providers.base import ENDED, NEEDS, ACTIVITY, TURN_DONE, WORKING, Runtime, Transcript
 from .paths import EVENTS_FILE, STATE_FILE, ensure_dirs
 
 STUCK_AFTER = 5 * 60
@@ -32,18 +33,6 @@ DONE_VISIBLE_FOR = 5 * 86400   # done sessions drop off the board after this
 DONE_MAX = 40
 EVENTS_KEEP = LOOKBACK         # an event outside the transcript window can't change the board
 ROTATE_EVERY = 6 * 3600
-
-NEEDS_EVENTS = {
-    ("Notification", "permission_prompt"): "Permission needed",
-    ("Notification", "elicitation_dialog"): "Input needed",
-    ("Notification", "elicitation_url_dialog"): "Input needed",
-    ("Notification", "agent_needs_input"): "Input needed",
-    ("PreToolUse", "AskUserQuestion"): "Asking you",
-    ("PreToolUse", "ExitPlanMode"): "Plan to review",
-}
-CLEAR_EVENTS = {"UserPromptSubmit", "PostToolUse", "Stop", "SessionEnd", "SessionStart",
-                "ElicitationResult"}
-WORKING_EVENTS = {"UserPromptSubmit", "PostToolUse", "SessionStart"}
 
 _QUESTION_PHRASES = ("should i", "want me to", "would you like", "do you want", "let me know",
                      "which would you prefer", "shall i", "ok to proceed", "does that work")
@@ -153,24 +142,22 @@ class HookTail:
         if not sid:
             return
         h = self.sessions.setdefault(sid, HookState())
-        name = ev.get("hook_event_name")
+        sig = providers.get(ev.get("provider")).signal(ev)
         ts = float(ev.get("ts") or 0)
-        h.last_event, h.last_ts = name, ts
+        h.last_event, h.last_ts = ev.get("hook_event_name"), ts
         h.cwd = ev.get("cwd") or h.cwd
         h.permission_mode = ev.get("permission_mode") or h.permission_mode
-        key = (name, ev.get("notification_type") or ev.get("tool_name") or ev.get("matcher"))
-        if key in NEEDS_EVENTS:
-            h.needs_label = NEEDS_EVENTS[key]
-            h.needs_text = ev.get("question") or ev.get("message") or ""
-        elif name in CLEAR_EVENTS:
+        if sig.kind == NEEDS:
+            h.needs_label, h.needs_text = sig.label, sig.text
+        elif sig.kind != ACTIVITY:
             h.needs_label, h.needs_text = None, ""
-        if name == "Stop":
+        if sig.kind == TURN_DONE:
             h.last_stop_ts = ts
             h.ended = False
-        if name in WORKING_EVENTS:
+        if sig.kind == WORKING:
             h.last_working_ts = ts
             h.ended = False
-        if name == "SessionEnd":
+        if sig.kind == ENDED:
             h.ended = True
 
 
@@ -310,8 +297,10 @@ class Board:
 
     def _build(self, now: float) -> dict:
         self.hooks.poll()
-        runtimes = read_runtimes()
-        transcripts = iter_transcripts(LOOKBACK)
+        found: list[tuple[Transcript, Runtime | None]] = []
+        for p in providers.active():
+            runtimes = p.runtimes()
+            found += [(t, runtimes.get(t.session_id)) for t in p.transcripts(LOOKBACK)]
         done_map: dict = self.persist.data["done"]
         reopened: dict = self.persist.data.get("reopened", {})
         names: dict = self.persist.data["names"]
@@ -319,9 +308,8 @@ class Board:
         sessions = []
         agents: dict[str, dict] = {}
         routine_sessions = routines_mod.hidden_sessions()
-        for t in transcripts:
+        for t, rt in found:
             sid = t.session_id
-            rt = runtimes.get(sid)
             h = self.hooks.sessions.get(sid)
             # Launch cwd, not the hook's: a `cd` inside the session must not
             # move the card to another agent.
@@ -357,6 +345,7 @@ class Board:
             agents.setdefault(a_key, agent.to_dict())
             sessions.append({
                 "id": sid,
+                "provider": t.provider,
                 "title": _title(t, names.get(sid)),
                 "auto_title": _title(t, None),
                 "agent": a_key,
@@ -422,9 +411,8 @@ class Board:
         silent = now - last_activity
         if live and h and h.needs_label:
             return "needs", h.needs_label, h.needs_text
-        if live and not h and t.pending_interactive:
-            lbl = "Plan to review" if "ExitPlanMode" in t.last_assistant_tools else "Asking you"
-            return "needs", lbl, ""
+        if live and not h and t.pending_label:
+            return "needs", t.pending_label, ""
         busy = bool(rt and rt.status == "busy")
         if not rt and h and not h.ended and h.last_working_ts > h.last_stop_ts:
             busy = True

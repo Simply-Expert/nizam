@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shlex
 import subprocess
 import uuid
 from pathlib import Path
 
-PERMISSION_MODES = ("acceptEdits", "plan", "auto", "default")
+from . import providers
+
 _KNOWN_TERMINALS = (("Terminal.app", "Terminal"), ("iTerm", "iTerm"), ("Ghostty", "Ghostty"),
                     ("Alacritty", "Alacritty"), ("WezTerm", "WezTerm"), ("kitty", "kitty"),
                     ("Hyper", "Hyper"), ("Tabby", "Tabby"), ("Warp", "Warp"))
@@ -18,11 +18,9 @@ _DETACHED = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
 
 
 def clean_env() -> dict[str, str]:
-    """Environment without Claude Code's own markers. When Nizam itself was
-    started from inside a Claude session, a launched Terminal would inherit
-    CLAUDE_CODE_CHILD_SESSION and refuse to save transcripts."""
-    return {k: v for k, v in os.environ.items()
-            if not (k.startswith("CLAUDE") or k in ("AI_AGENT", "ENABLE_CLAUDEAI_MCP_SERVERS"))}
+    """Environment without the markers of an agent session Nizam itself may
+    have been started from."""
+    return providers.clean_env()
 _SAFE_ID = re.compile(r"^[0-9a-fA-F-]{8,64}$")
 
 
@@ -36,8 +34,8 @@ def _ps(pid: int, fmt: str) -> str:
 
 def session_host(pid: int) -> dict:
     """{'kind': 'terminal', 'tty': 'ttys001', 'app': 'Terminal'} or {'kind': 'desktop'}.
-    The controlling tty is the reliable signal; Claude's own `entrypoint`
-    field says claude-desktop even for terminal launches."""
+    The controlling tty is the reliable signal; a session's own record of
+    its entrypoint can say desktop even for terminal launches."""
     tty = _ps(pid, "tty=")
     if tty in ("", "?", "??"):
         return {"kind": "desktop", "pid": pid}
@@ -115,7 +113,7 @@ return "missing"'''
 
 def focus_ghostty(cwd: str, titles: list[str]) -> bool:
     """Ghostty 1.3+ scripting: terminals expose title and working directory
-    but not the tty. Title is the primary key (Claude sets it to the session
+    but not the tty. Title is the primary key (the agent sets it to the session
     title); the working directory only breaks ties, since tabs launched via
     `-e` report it empty."""
     def q(x: str) -> str:
@@ -160,10 +158,13 @@ end tell"""
     return "found" in _osascript(script)
 
 
-def focus(pid: int, cwd: str = "", titles: list[str] | None = None) -> bool:
+def focus(pid: int, cwd: str = "", titles: list[str] | None = None, provider: str | None = None) -> bool:
     host = session_host(pid)
     if host["kind"] == "desktop":
-        subprocess.Popen(["open", "-a", "Claude"], env=clean_env(), **_DETACHED)
+        app = providers.get(provider).desktop_app
+        if not app:
+            return False
+        subprocess.Popen(["open", "-a", app], env=clean_env(), **_DETACHED)
         return True
     app = host.get("app")
     if app == "Terminal" and focus_terminal_tab(host["tty"]):
@@ -216,33 +217,31 @@ def run_in_new_terminal(shell_cmd: str, paste_only: bool = False, launcher: str 
                f'tell application "Terminal" to do script {lit}')
 
 
-def resume(session_id: str, cwd: str, paste_only: bool = False, launcher: str = "Terminal") -> bool:
+def resume(session_id: str, cwd: str, paste_only: bool = False, launcher: str = "Terminal",
+           provider: str | None = None) -> bool:
     if not _SAFE_ID.match(session_id):
         return False
-    run_in_new_terminal(f"cd {shlex.quote(cwd)} && claude --resume {shlex.quote(session_id)}",
+    run_in_new_terminal(f"cd {shlex.quote(cwd)} && {providers.get(provider).resume_command(session_id)}",
                         paste_only, launcher, cwd)
     return True
 
 
 def start(cwd: str, prompt: str = "", permission_mode: str = "acceptEdits",
-          worktree: bool = False, paste_only: bool = False, launcher: str = "Terminal") -> str:
+          worktree: bool = False, paste_only: bool = False, launcher: str = "Terminal",
+          provider: str | None = None) -> str:
     """Start a new session in a new Terminal window. The session id is
-    minted here and passed via --session-id, so the caller knows which
+    minted here and handed to the CLI, so the caller knows which
     transcript belongs to this launch before it even appears."""
     sid = str(uuid.uuid4())
-    flags = [f"--session-id {sid}"]
-    if permission_mode in PERMISSION_MODES and permission_mode != "default":
-        flags.append(f"--permission-mode {permission_mode}")
-    cmd = "claude " + " ".join(flags)
-    if prompt.strip():
-        cmd += " " + shlex.quote(prompt.strip())
+    p = providers.get(provider)
+    cmd = p.start_command(sid, prompt, permission_mode)
     if worktree:
         root = git_root(cwd)
         if root:
             import time
             stamp = time.strftime("%Y%m%d-%H%M%S")
             wt = Path(root).parent / f"{Path(root).name}-{stamp}"
-            shell = (f"git -C {shlex.quote(root)} worktree add -b claude/{stamp} {shlex.quote(str(wt))} "
+            shell = (f"git -C {shlex.quote(root)} worktree add -b {p.name}/{stamp} {shlex.quote(str(wt))} "
                      f"&& cd {shlex.quote(str(wt))} && {cmd}")
             run_in_new_terminal(shell, paste_only, launcher, str(wt.parent))
             return sid

@@ -118,9 +118,9 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "open":
                 ok = False
                 if s["live"] and s["pid"]:
-                    ok = terminal.focus(s["pid"], s["cwd"], [s.get("auto_title", ""), s["title"]])
+                    ok = terminal.focus(s["pid"], s["cwd"], [s.get("auto_title", ""), s["title"]], s["provider"])
                 if not ok:
-                    ok = terminal.resume(sid, s["cwd"], bool(body.get("paste")), launcher)
+                    ok = terminal.resume(sid, s["cwd"], bool(body.get("paste")), launcher, s["provider"])
                 b.invalidate()
                 return self._json({"ok": ok})
             else:
