@@ -56,10 +56,26 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return {}
 
+    def _local(self, post: bool = False) -> bool:
+        """Refuse other sites: a web page can reach 127.0.0.1, directly or through a DNS-rebound name."""
+        port = self.server.server_address[1]
+        hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        if self.headers.get("Host", "") not in hosts:
+            return False
+        if not post:
+            return True
+        origin = self.headers.get("Origin")
+        if origin is not None and origin not in {f"http://{h}" for h in hosts}:
+            return False
+        # A JSON content type forces a CORS preflight, which is never answered.
+        return self.headers.get("Content-Type", "").split(";")[0].strip().lower() == "application/json"
+
     def _session(self, sid: str) -> dict | None:
         return next((s for s in self.board.snapshot()["sessions"] if s["id"] == sid), None)
 
     def do_GET(self):
+        if not self._local():
+            return self._json({"error": "forbidden"}, 403)
         u = urlparse(self.path)
         if u.path in ("/", "/index.html"):
             return self._file(UI_DIR / "index.html")
@@ -80,6 +96,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"error": "not found"}, 404)
 
     def do_POST(self):
+        if not self._local(post=True):
+            return self._json({"error": "forbidden"}, 403)
         u = urlparse(self.path)
         parts = [p for p in u.path.split("/") if p]
         body = self._body()
