@@ -86,10 +86,18 @@ def ensure_venv() -> bool:
     return _venv_ok()
 
 
-def run_app(port: int) -> int:
+def run_app(port: int, detach: bool = False) -> int:
     from .terminal import clean_env
     if not ensure_venv():
         return 1
+    if detach:
+        # Its own session, so closing the launching terminal does not take the app down with it.
+        log = open(NIZAM_DIR / "app.log", "ab")
+        subprocess.Popen([str(VENV_PY), "-m", "nizam", "app", "--port", str(port)], env=clean_env(),
+                         cwd=str(Path(__file__).resolve().parents[1]), stdin=subprocess.DEVNULL,
+                         stdout=log, stderr=log, start_new_session=True, close_fds=True)
+        print("Nizam started in the background; log:", NIZAM_DIR / "app.log")
+        return 0
     if os.path.realpath(sys.executable) != os.path.realpath(VENV_PY):
         os.execve(str(VENV_PY), [str(VENV_PY), "-m", "nizam", "app", "--port", str(port)], clean_env())
     if len(clean_env()) != len(os.environ):
@@ -167,6 +175,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = sub.add_parser("app", help="run the menu-bar app (server included)")
     ap.add_argument("--port", type=int, default=7331)
     ap.add_argument("--quit", action="store_true", help="quit the running menu-bar app")
+    ap.add_argument("--detach", action="store_true", help="run in the background, surviving the terminal")
+    ap.add_argument("--restart", action="store_true",
+                    help="quit the running menu-bar app, then start it again detached")
     lg = sub.add_parser("login", help="start at login: on | off | status")
     lg.add_argument("state", choices=("on", "off", "status"))
     a = p.parse_args(argv)
@@ -174,7 +185,13 @@ def main(argv: list[str] | None = None) -> int:
         if a.quit:
             from .launch import request_quit
             return request_quit()
-        return run_app(a.port)
+        if a.restart:
+            from .launch import wait_for_quit
+            if not wait_for_quit():
+                print("the running menu-bar app did not quit in time", file=sys.stderr)
+                return 1
+        ensure_dirs()
+        return run_app(a.port, detach=a.detach or a.restart)
     if a.cmd == "login":
         from .launch import login_enabled, set_login
         if a.state != "status":

@@ -101,6 +101,10 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .lsec.fu { color: var(--due); }
 .tag.due.overdue { background: var(--needs-bg); color: var(--needs); } .tag.due.today { background: var(--working-bg); color: var(--working); }
 .empty { color: var(--muted); padding: 40px 12px; text-align: center; }
+.onboard { padding: 40px 24px; max-width: 460px; margin: 0 auto; }
+.onboard h2 { font-size: 15px; margin: 0 0 8px; }
+.onboard p { color: var(--muted); margin: 0 0 12px; }
+.onboard code { font-family: var(--mono); font-size: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; color: var(--text); }
 
 /* ---- detail ---- */
 .detail { padding: 18px 22px 30px; }
@@ -130,6 +134,8 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .modal label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 4px; }
 .modal .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .modal .foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; align-items: center; }
+.modal .note { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.modal .note:empty { display: none; }
 .modal .cmd { font-family: var(--mono); font-size: 11px; color: var(--muted); background: var(--bg); padding: 6px 8px; border-radius: 6px; word-break: break-all; }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--needs); color: #fff; padding: 8px 14px; border-radius: 8px; z-index: 30; display: none; }
 
@@ -161,6 +167,14 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
   </div>
 </div>
 
+<div class="modal-bg" id="confirm">
+  <div class="modal" style="width:420px">
+    <h3 id="confirmTitle"></h3>
+    <div class="muted" id="confirmHint" style="font-size:12px"></div>
+    <div class="foot"><button id="confirmNo">Cancel</button><button class="primary" id="confirmYes"></button></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal">
   <div class="modal">
     <h3>New session</h3>
@@ -173,7 +187,7 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
       <div class="f"><label>Permission mode</label>
         <select id="mPerm"><option value="acceptEdits">Accept edits</option><option value="plan">Plan</option><option value="auto">Auto</option><option value="default">Default</option></select></div>
       <div class="f"><label>Run in</label>
-        <select id="mWhere"><option value="same">This folder</option><option value="worktree">New git worktree</option></select></div>
+        <select id="mWhere"><option value="same">This folder</option><option value="worktree">New git worktree</option></select><div class="note" id="mWhereNote"></div></div>
     </div>
     <div class="f"><label>Opens in</label>
       <select id="mLauncher"><option value="Terminal">Terminal.app</option><option value="Ghostty">Ghostty</option></select></div>
@@ -203,7 +217,7 @@ async function api(path, body) {
   const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)} : {});
   return r.json();
 }
-function busyEditing() { return DRAG !== null || $('#ask').classList.contains('open') || $('#ctx').classList.contains('open') || $('#modal').classList.contains('open'); }
+function busyEditing() { return DRAG !== null || $('#ask').classList.contains('open') || $('#confirm').classList.contains('open') || $('#ctx').classList.contains('open') || $('#modal').classList.contains('open'); }
 async function refresh(force) {
   try {
     const d = await api('/api/board');
@@ -242,8 +256,10 @@ function currentList() {
   return visible(list).sort((a, b) => ORDER[a.bucket] - ORDER[b.bucket] || b.last_activity - a.last_activity);
 }
 
+const ONBOARD = `<div class="onboard"><h2>No agents yet</h2><p>Every folder you run Claude Code in shows up here as an agent, with its sessions sorted by who needs you.</p><p>Open a terminal in any project and run <code>claude</code>. The board picks it up within a few seconds.</p></div>`;
 function render() {
   if (!DATA) return;
+  if (!DATA.agents.length) { $('#side').innerHTML = `<div class="brand">Nizam <span class="ar">نظام</span></div>`; $('#list').innerHTML = ONBOARD; $('#detail').innerHTML = ''; $('#detail').classList.remove('open'); NAV = []; return; }
   if (SEL.agent && !agentOf(SEL.agent)) SEL = {agent: null, area: null};
   renderSide(); renderList(); renderDetail();
 }
@@ -342,7 +358,7 @@ function followupRow(f, showAgent) {
 function sessionRow(s) {
   const where = SEL.agent ? (s.area ? esc(s.area) : '') : esc(s.agent_name) + (s.area ? ' › ' + esc(s.area) : '');
   const p = s.bucket === 'needs' && s.detail ? `<span class="p why">${esc(s.detail)}</span>` : `<span class="p">${esc(lastPara(s.preview))}</span>`;
-  return `<div class="item ${s.bucket} ${CUR===s.id?'on':''}" data-id="${s.id}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span><span class="t">${esc(s.title)}</span><span class="ago"><span class="agotxt">${esc(s.ago)}</span>${s.bucket==='closed'?`<button class="rowdone" data-done="${s.id}" title="Mark done">Done ✓</button>`:''}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
+  return `<div class="item ${s.bucket} ${CUR===s.id?'on':''}" data-id="${s.id}" title="Double-click or Enter to ${s.live?'jump to':'resume'}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span><span class="t">${esc(s.title)}</span><span class="ago"><span class="agotxt">${esc(s.ago)}</span>${s.bucket==='closed'?`<button class="rowdone" data-done="${s.id}" title="Mark done">Done ✓</button>`:''}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
 }
 function renderList() {
   const agent = agentOf(SEL.agent);
@@ -379,20 +395,24 @@ function renderList() {
   const el = $('#list'); el.innerHTML = h;
   el.querySelectorAll('[data-ar]').forEach(c => c.addEventListener('click', () => { SEL.area = c.dataset.ar || null; save('sel', SEL); render(); }));
   el.querySelectorAll('[data-agent]').forEach(c => c.addEventListener('click', () => { SEL = {agent: c.dataset.agent || null, area: null}; save('sel', SEL); CUR = null; render(); }));
-  el.querySelectorAll('[data-id]').forEach(c => c.addEventListener('click', () => { CUR = c.dataset.id; detailOpen = true; render(); }));
+  el.querySelectorAll('[data-id]').forEach(c => c.addEventListener('click', e => {
+    // The first click re-renders the row, so a dblclick listener would sit on a replaced element.
+    if (e.detail === 2 && CUR === c.dataset.id) return openSession(CUR);
+    CUR = c.dataset.id; detailOpen = true; render();
+  }));
   el.querySelectorAll('[data-done]').forEach(b => b.addEventListener('click', async e => { e.stopPropagation(); await api(`/api/sessions/${b.dataset.done}/done`, {}); refresh(true); }));
   el.querySelector('[data-newhere]').addEventListener('click', e => SEL.agent ? newHere(e, SEL.agent, SEL.area) : openModal());
   el.querySelector('[data-newhere]').addEventListener('contextmenu', e => { e.preventDefault(); openModal(SEL.agent, SEL.area); });
   el.querySelector('[data-clear]').addEventListener('click', async () => {
     const n = list.filter(s => s.bucket === 'closed').length;
     if (!n) { toast('Nothing in Closed to clear'); return; }
-    const ok = await ask(`Mark ${n} closed session${n>1?'s':''} as done?`, 'yes', 'Open sessions are left alone. Any of them reopens on new activity.');
-    if (ok === null) return;
+    if (!await confirmBox(`Mark ${n} closed session${n>1?'s':''} as done?`, 'Open sessions are left alone. Any of them reopens on new activity.', 'Mark done')) return;
     const r = await api('/api/sessions/done-all', {agent: SEL.agent, area: SEL.area});
     toast(`${r.marked} marked done`, true); refresh(true);
   });
   if ((!CUR || !NAV.includes(CUR)) && NAV.length && window.innerWidth > 760) { CUR = NAV[0]; renderListSelection(); }
 }
+function openSession(id) { if (id && !id.startsWith('f:')) api(`/api/sessions/${id}/open`, {}); }
 function renderListSelection() { document.querySelectorAll('.item').forEach(i => i.classList.toggle('on', i.dataset.id === CUR)); }
 
 /* ---------- detail ---------- */
@@ -455,6 +475,19 @@ function ask(title, value, hint) {
     inp.addEventListener('keydown', onKey); $('#askOk').addEventListener('click', onOk); $('#askCancel').addEventListener('click', onCancel); m.addEventListener('click', onBg);
   });
 }
+function confirmBox(title, hint, yesLabel) {
+  return new Promise(resolve => {
+    const m = $('#confirm'), yes = $('#confirmYes');
+    $('#confirmTitle').textContent = title; $('#confirmHint').textContent = hint || ''; yes.textContent = yesLabel || 'Yes';
+    m.classList.add('open'); yes.focus();
+    const done = v => { m.classList.remove('open'); cleanup(); resolve(v); };
+    const onKey = e => { if (e.key === 'Escape') done(false); e.stopPropagation(); };
+    const onYes = () => done(true), onNo = () => done(false);
+    const onBg = e => { if (e.target.id === 'confirm') done(false); };
+    function cleanup() { m.removeEventListener('keydown', onKey); yes.removeEventListener('click', onYes); $('#confirmNo').removeEventListener('click', onNo); m.removeEventListener('click', onBg); }
+    m.addEventListener('keydown', onKey); yes.addEventListener('click', onYes); $('#confirmNo').addEventListener('click', onNo); m.addEventListener('click', onBg);
+  });
+}
 function toast(msg, ok) { const t = $('#toast'); t.textContent = msg; t.style.background = ok ? 'var(--inbox)' : 'var(--needs)'; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3500); }
 
 /* ---------- new session ---------- */
@@ -472,12 +505,14 @@ function newHere(e, agentRoot, areaRel) {
   return quickStart(agentRoot, areaRel);
 }
 function openModal(agentRoot, areaRel) {
+  if (!DATA || !DATA.agents.length) { toast('No agents yet. Run claude in a project folder first.'); return; }
   const sel = $('#mAgent');
   sel.innerHTML = sortedAgents().map(a => `<option value="${esc(a.root)}">${esc(a.display_name)}  (${esc(a.display)})</option>`).join('');
   const last = DATA.prefs.last_start || {};
   sel.value = agentRoot || SEL.agent || last.cwd || '';
   if (!sel.value && DATA.agents[0]) sel.value = sortedAgents()[0].root;
   fillAreas(areaRel !== undefined && areaRel !== null ? areaRel : (SEL.agent === sel.value ? SEL.area : ''));
+  syncWhere();
   $('#mPerm').value = last.permission_mode || 'acceptEdits';
   $('#mLauncher').value = DATA.prefs.launcher || 'Terminal';
   $('#mPrompt').value = '';
@@ -489,6 +524,12 @@ function fillAreas(want) {
   const a = agentOf($('#mAgent').value);
   $('#mArea').innerHTML = [`<option value="">— agent root —</option>`].concat((a ? a.areas : []).map(ar => `<option value="${esc(ar.rel)}">${'  '.repeat(ar.depth)}${esc(ar.rel)}</option>`)).join('');
   $('#mArea').value = want || '';
+}
+function syncWhere() {
+  const a = agentOf($('#mAgent').value), git = !!(a && a.git);
+  $('#mWhere').querySelector('[value="worktree"]').disabled = !git;
+  if (!git) $('#mWhere').value = 'same';
+  $('#mWhereNote').textContent = git ? '' : 'Worktrees need a git repository; this folder is not in one.';
 }
 function startPayload() {
   const a = agentOf($('#mAgent').value);
@@ -503,7 +544,7 @@ function updateCmd() {
   if (p.worktree) c = '(git worktree add …) && ' + c;
   $('#mCmd').textContent = c;
 }
-$('#mAgent').addEventListener('change', () => { fillAreas(''); updateCmd(); });
+$('#mAgent').addEventListener('change', () => { fillAreas(''); syncWhere(); updateCmd(); });
 ['#mArea','#mPrompt','#mPerm','#mWhere'].forEach(s => $(s).addEventListener('input', updateCmd));
 $('#mLauncher').addEventListener('change', async () => { await api('/api/prefs', {launcher: $('#mLauncher').value}); });
 $('#mCancel').addEventListener('click', () => $('#modal').classList.remove('open'));
@@ -530,7 +571,7 @@ document.addEventListener('keydown', e => {
     const el = document.querySelector(`.item[data-id="${CUR}"]`); if (el) el.scrollIntoView({block: 'nearest'});
   }
   if (e.key === 'd' && CUR) { const s = DATA.sessions.find(x => x.id === CUR); if (s && s.bucket !== 'done') api(`/api/sessions/${CUR}/done`, {}).then(() => refresh(true)); }
-  if (e.key === 'Enter' && CUR && !CUR.startsWith('f:')) api(`/api/sessions/${CUR}/open`, {});
+  if (e.key === 'Enter') openSession(CUR);
 });
 
 refresh(true);

@@ -112,6 +112,8 @@ class Handler(BaseHTTPRequestHandler):
             cwd = str(body.get("cwd") or "")
             if not cwd or not Path(cwd).is_dir():
                 return self._json({"error": "cwd must be an existing folder"}, 400)
+            if body.get("worktree") and not terminal.git_root(cwd):
+                return self._json({"error": "Not a git repository, so no worktree can be created"}, 400)
             sid = terminal.start(cwd, prompt=str(body.get("prompt") or ""),
                                  permission_mode=str(body.get("permission_mode") or "acceptEdits"),
                                  worktree=bool(body.get("worktree")), paste_only=bool(body.get("paste")),

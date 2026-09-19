@@ -99,6 +99,8 @@ A folder becomes visible on the board the moment it gets an `INSTRUCTIONS.md`.
 ```
 nizam app             menu bar + badge + server in one process
 nizam app --quit      stop it
+nizam app --detach    same, in the background; survives closing the terminal
+nizam app --restart   stop it, wait for it to exit, start it again detached
 nizam serve [--open]  server only, for the browser
 nizam open            open the board in the browser
 nizam install         install hooks + build the venv

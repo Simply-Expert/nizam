@@ -58,3 +58,16 @@ def request_quit() -> int:
     return 0
 
 
+def wait_for_quit(timeout: float = 15.0) -> bool:
+    """Ask the running app to quit and wait for it to exit; True once none is running."""
+    import time
+    if not (PID_FILE.exists() and pid_alive(int(PID_FILE.read_text() or 0))):
+        return True
+    pid = int(PID_FILE.read_text())
+    QUIT_FLAG.touch()
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not pid_alive(pid):
+            return True
+        time.sleep(0.2)
+    return False

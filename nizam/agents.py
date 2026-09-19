@@ -40,6 +40,7 @@ class Agent:
     root: Path
     name: str
     areas: dict[str, Area]
+    git: bool = False
 
     def area_for(self, cwd: Path) -> Area | None:
         """Deepest area whose folder contains cwd, or None (agent root / non-area folder)."""
@@ -52,7 +53,7 @@ class Agent:
 
     def to_dict(self) -> dict:
         return {"root": str(self.root), "name": self.name,
-                "display": display_path(self.root),
+                "display": display_path(self.root), "git": self.git,
                 "areas": [a.to_dict() for a in sorted(self.areas.values(), key=lambda a: a.rel)]}
 
 
@@ -111,10 +112,14 @@ def _scan_areas(root: Path) -> dict[str, Area]:
     return areas
 
 
+def _in_git_repo(root: Path) -> bool:
+    return any((p / ".git").exists() for p in (root, *root.parents))
+
+
 @lru_cache(maxsize=256)
 def _load_agent(root_str: str, _mtime_bucket: int) -> Agent:
     root = Path(root_str)
-    return Agent(root=root, name=root.name or "/", areas=_scan_areas(root))
+    return Agent(root=root, name=root.name or "/", areas=_scan_areas(root), git=_in_git_repo(root))
 
 
 def load_agent(root: Path) -> Agent:

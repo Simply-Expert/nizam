@@ -237,7 +237,7 @@ def start(cwd: str, prompt: str = "", permission_mode: str = "acceptEdits",
     if prompt.strip():
         cmd += " " + shlex.quote(prompt.strip())
     if worktree:
-        root = _git_root(cwd)
+        root = git_root(cwd)
         if root:
             import time
             stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -250,7 +250,7 @@ def start(cwd: str, prompt: str = "", permission_mode: str = "acceptEdits",
     return sid
 
 
-def _git_root(cwd: str) -> str | None:
+def git_root(cwd: str) -> str | None:
     try:
         r = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
                            capture_output=True, text=True, timeout=5)

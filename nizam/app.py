@@ -17,6 +17,7 @@ from AppKit import (
     NSFont, NSAttributedString, NSColor, NSFontAttributeName, NSForegroundColorAttributeName,
     NSObject, NSTimer, NSWorkspace, NSURL, NSPanel, NSView, NSBezierPath, NSEvent,
     NSBackingStoreBuffered, NSMakePoint, NSScreen, NSFontWeightSemibold,
+    NSImage, NSImageSymbolConfiguration, NSMutableAttributedString, NSTextAttachment,
 )
 from Foundation import NSURLRequest
 from WebKit import WKWebView, WKWebViewConfiguration
@@ -39,6 +40,48 @@ NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0
 NSWindowCollectionBehaviorStationary = 1 << 4
 NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8
 BADGE_H = 28
+
+
+# bucket -> (SF Symbol, fallback glyph, colour, tooltip wording)
+SEGMENTS = {
+    "needs": ("hand.raised.fill", "✋", NSColor.systemRedColor, "{n} waiting on you"),
+    "working": ("hourglass", "⏳", NSColor.systemOrangeColor, "{n} working"),
+    "inbox": ("arrowshape.turn.up.left.fill", "↩", NSColor.systemGreenColor, "{n} your turn to reply"),
+}
+
+
+def _shown(counts: dict) -> list[str]:
+    return [k for k in SEGMENTS if counts[k] or k == "inbox"]
+
+
+def _segment(bucket: str, n: int, font, tint_count: bool) -> NSAttributedString:
+    symbol, glyph, color_fn, _ = SEGMENTS[bucket]
+    color = color_fn()
+    count_attrs = {NSFontAttributeName: font}
+    if tint_count:
+        count_attrs[NSForegroundColorAttributeName] = color
+    out = NSMutableAttributedString.alloc().init()
+    img = NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol, None)
+    if img is None:
+        out.appendAttributedString_(NSAttributedString.alloc().initWithString_attributes_(
+            glyph, {NSFontAttributeName: font, NSForegroundColorAttributeName: color}))
+    else:
+        cfg = NSImageSymbolConfiguration.configurationWithPointSize_weight_(font.pointSize(), NSFontWeightSemibold)
+        cfg = cfg.configurationByApplyingConfiguration_(
+            NSImageSymbolConfiguration.configurationWithPaletteColors_([color]))
+        img = img.imageWithSymbolConfiguration_(cfg)
+        att = NSTextAttachment.alloc().init()
+        att.setImage_(img)
+        sz = img.size()
+        # Sit the symbol on the digits' optical centre rather than the baseline.
+        att.setBounds_(NSMakeRect(0, (font.capHeight() - sz.height) / 2, sz.width, sz.height))
+        out.appendAttributedString_(NSAttributedString.attributedStringWithAttachment_(att))
+    out.appendAttributedString_(NSAttributedString.alloc().initWithString_attributes_(f" {n}", count_attrs))
+    return out
+
+
+def _legend(counts: dict) -> str:
+    return " · ".join(SEGMENTS[k][3].format(n=counts[k]) for k in _shown(counts))
 
 
 def _notify(title: str, body: str) -> None:
@@ -95,26 +138,14 @@ class BadgeView(NSView):
 
     @objc.python_method
     def segments(self):
-        c = self.counts
-        segs = []
-        if c["needs"]:
-            segs.append((f"🔔 {c['needs']}", NSColor.systemRedColor()))
-        if c["working"]:
-            segs.append((f"⚙ {c['working']}", NSColor.systemOrangeColor()))
-        segs.append((f"📥 {c['inbox']}", NSColor.labelColor()))
-        return segs
-
-    @objc.python_method
-    def attributed(self, text, color):
         font = NSFont.systemFontOfSize_weight_(12, NSFontWeightSemibold)
-        return NSAttributedString.alloc().initWithString_attributes_(
-            text, {NSFontAttributeName: font, NSForegroundColorAttributeName: color})
+        return [_segment(k, self.counts[k], font, True) for k in _shown(self.counts)]
 
     @objc.python_method
     def desired_width(self):
         w = 14
-        for text, color in self.segments():
-            w += self.attributed(text, color).size().width + 12
+        for a in self.segments():
+            w += a.size().width + 12
         return max(60, w + 2)
 
     def drawRect_(self, rect):
@@ -126,8 +157,7 @@ class BadgeView(NSView):
         path.setLineWidth_(1)
         path.stroke()
         x = 8.0
-        for text, color in self.segments():
-            a = self.attributed(text, color)
+        for a in self.segments():
             sz = a.size()
             a.drawAtPoint_(NSMakePoint(x, (b.size.height - sz.height) / 2))
             x += sz.width + 12
@@ -256,6 +286,7 @@ class AppDelegate(NSObject):
         self.badge.setContentSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
         self.badge_view.setFrameSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
         self.badge_view.setNeedsDisplay_(True)
+        self.badge_view.setToolTip_(_legend(counts))
         new_ids = set(needs_now) - self.seen_needs
         if self.seeded and new_ids:
             if len(new_ids) == 1:
@@ -268,17 +299,14 @@ class AppDelegate(NSObject):
 
     @objc.python_method
     def _set_title(self, c):
-        parts = []
-        if c["needs"]:
-            parts.append(("🔔", c["needs"], NSColor.systemRedColor()))
-        if c["working"]:
-            parts.append(("⚙", c["working"], NSColor.systemOrangeColor()))
-        parts.append(("📥", c["inbox"], NSColor.labelColor()))
         font = NSFont.menuBarFontOfSize_(0)
-        text = "  ".join(f"{e}{n}" for e, n, _ in parts)
-        attrs = {NSFontAttributeName: font}
-        self.status.button().setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(text, attrs))
-        self.status.button().setToolTip_("Nizam نظام — click for the board, right-click for options")
+        title = NSMutableAttributedString.alloc().init()
+        for i, k in enumerate(_shown(c)):
+            if i:
+                title.appendAttributedString_(NSAttributedString.alloc().initWithString_attributes_("   ", {NSFontAttributeName: font}))
+            title.appendAttributedString_(_segment(k, c[k], font, False))
+        self.status.button().setAttributedTitle_(title)
+        self.status.button().setToolTip_(f"Nizam نظام — {_legend(c)}\nClick for the board, right-click for options")
 
     @objc.python_method
     def _restore_badge(self):
