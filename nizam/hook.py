@@ -5,6 +5,7 @@ Installed into ~/.claude/settings.json by `nizam install`.
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import sys
@@ -37,6 +38,10 @@ def main() -> int:
         path = os.path.join(os.path.expanduser("~"), ".nizam", "events.jsonl")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "a", encoding="utf-8") as f:
+            try:                          # this file is trimmed in place while hooks run
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            except OSError:
+                pass
             f.write(json.dumps(ev, ensure_ascii=False) + "\n")
     except Exception:
         pass

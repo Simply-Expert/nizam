@@ -10,6 +10,7 @@ Done is sticky until new activity lands on the session, which reopens it.
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import threading
@@ -29,6 +30,8 @@ AUTO_DONE_AFTER = 2 * 86400
 LOOKBACK = 14 * 86400          # transcripts older than this aren't loaded at all
 DONE_VISIBLE_FOR = 5 * 86400   # done sessions drop off the board after this
 DONE_MAX = 40
+EVENTS_KEEP = LOOKBACK         # an event outside the transcript window can't change the board
+ROTATE_EVERY = 6 * 3600
 
 NEEDS_EVENTS = {
     ("Notification", "permission_prompt"): "Permission needed",
@@ -59,14 +62,70 @@ class HookState:
     permission_mode: str | None = None
 
 
+def rotate_events(now: float, keep: float = EVENTS_KEEP) -> int:
+    """Drop events older than `keep` seconds; returns the bytes removed.
+
+    In place and locked, so a concurrent append is not lost with the old inode.
+    """
+    try:
+        with open(EVENTS_FILE, "r+b") as f:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            except OSError:
+                pass
+            raw = f.read()
+            lines = raw.splitlines(keepends=True)
+            cutoff = now - keep
+            cut = 0
+            for i, line in enumerate(lines):
+                try:
+                    ts = float(json.loads(line).get("ts") or 0)
+                except (ValueError, AttributeError):
+                    cut = i + 1
+                    continue
+                if ts >= cutoff:
+                    break
+                cut = i + 1
+            if not cut:
+                return 0
+            kept = b"".join(lines[cut:])
+            f.seek(0)
+            f.write(kept)
+            f.truncate()
+            return len(raw) - len(kept)
+    except (OSError, ValueError):
+        return 0
+
+
+def events_summary() -> tuple[int, int, float]:
+    """(bytes, events, span in days)."""
+    try:
+        raw = EVENTS_FILE.read_bytes()
+    except OSError:
+        return 0, 0, 0.0
+    stamps = []
+    for line in raw.splitlines():
+        try:
+            stamps.append(float(json.loads(line).get("ts") or 0))
+        except (ValueError, AttributeError):
+            continue
+    span = (max(stamps) - min(stamps)) / 86400 if stamps else 0.0
+    return len(raw), len(stamps), span
+
+
 class HookTail:
     """Incrementally consume ~/.nizam/events.jsonl."""
 
     def __init__(self) -> None:
         self.offset = 0
         self.sessions: dict[str, HookState] = {}
+        self.next_rotate = 0.0
 
     def poll(self) -> None:
+        now = time.time()
+        if now >= self.next_rotate:
+            self.next_rotate = now + ROTATE_EVERY
+            self.offset = max(0, self.offset - rotate_events(now))
         try:
             size = EVENTS_FILE.stat().st_size
         except OSError:

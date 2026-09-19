@@ -161,7 +161,9 @@ def doctor() -> int:
                for h in g.get("hooks", []) if MARK in str(h.get("command", "")))
     print(f"hooks installed: {ours}/{len(HOOK_EVENTS)}")
     ok &= ours == len(HOOK_EVENTS)
-    print(f"events file: {EVENTS_FILE} ({EVENTS_FILE.stat().st_size if EVENTS_FILE.exists() else 0} bytes)")
+    from .state import events_summary
+    size, count, span = events_summary()
+    print(f"events file: {EVENTS_FILE} ({size} bytes, {count} events over {span:.1f}d)")
     from .paths import CLAUDE_SESSIONS
     print(f"runtime files: {len(list(CLAUDE_SESSIONS.glob('*.json'))) if CLAUDE_SESSIONS.is_dir() else 0}")
     from . import routines

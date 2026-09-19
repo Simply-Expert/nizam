@@ -200,7 +200,7 @@ nizam doctor          check wiring
 | Path | Contents |
 |---|---|
 | `~/.nizam/state.json` | Your decisions: done flags, session titles, agent display names, pins, order, prefs |
-| `~/.nizam/events.jsonl` | Hook events, including short snippets of prompts and replies. Treat as private. |
+| `~/.nizam/events.jsonl` | Hook events, including short snippets of prompts and replies. Trimmed to the last 14 days. Treat as private. |
 | `~/.nizam/routines` | Routine run records (`runs.jsonl`, with the tail of each run's final reply), per-run logs, locks. Treat as private. |
 | `~/.nizam/requests` | `links.md` (who may write to whom; yours to edit) and `requests.jsonl` (every request, refusal and outcome). Treat as private. |
 | `~/Library/LaunchAgents/co.nizam.routine.*` | One per scheduled routine; written by `nizam routines sync`, removed by `nizam uninstall` |
