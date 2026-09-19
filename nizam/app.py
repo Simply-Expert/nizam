@@ -47,6 +47,7 @@ SEGMENTS = {
     "needs": ("hand.raised.fill", "✋", NSColor.systemRedColor, "{n} waiting on you"),
     "working": ("hourglass", "⏳", NSColor.systemOrangeColor, "{n} working"),
     "inbox": ("arrowshape.turn.up.left.fill", "↩", NSColor.systemGreenColor, "{n} your turn to reply"),
+    "due": ("diamond.fill", "◆", NSColor.systemPurpleColor, "{n} follow-ups due"),
 }
 
 
@@ -129,7 +130,7 @@ class BadgeView(NSView):
         if self is None:
             return None
         self.delegate = delegate
-        self.counts = {"needs": 0, "working": 0, "inbox": 0}
+        self.counts = {"needs": 0, "working": 0, "inbox": 0, "due": 0}
         self._dragged = False
         return self
 
@@ -274,13 +275,14 @@ class AppDelegate(NSObject):
         except Exception as e:  # keep the runloop alive no matter what
             sys.stderr.write(f"refresh failed: {e}\n")
             return
-        counts = {"needs": 0, "working": 0, "inbox": 0}
+        counts = {"needs": 0, "working": 0, "inbox": 0, "due": 0}
         needs_now = {}
         for s in snap["sessions"]:
             if s["bucket"] in counts:
                 counts[s["bucket"]] += 1
             if s["bucket"] == "needs":
                 needs_now[s["id"]] = s
+        counts["due"] = sum(1 for f in snap.get("followups", []) if f["due"] != "upcoming")
         for r in snap.get("routines", []):
             if r["failing"]:
                 counts["needs"] += 1
