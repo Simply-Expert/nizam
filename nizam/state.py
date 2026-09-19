@@ -15,7 +15,7 @@ import json
 import os
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from . import agents as agents_mod
@@ -401,8 +401,9 @@ class Board:
             a["pinned"] = bool(o.get("pinned"))
         for s in sessions:
             s["agent_name"] = agents[s["agent"]]["display_name"]
+        limits = [{"provider": p.name, **asdict(l)} for p in providers.active() for l in p.limits(now)]
         return {"generated_at": now, "agents": sorted(agents.values(), key=lambda a: a["display_name"].lower()),
-                "sessions": sessions, "followups": followups, "routines": routines, "requests": requests, "prefs": self.persist.data["prefs"],
+                "sessions": sessions, "limits": limits, "followups": followups, "routines": routines, "requests": requests, "prefs": self.persist.data["prefs"],
                 "agent_order": self.persist.data.get("agent_order", [])}
 
     @staticmethod

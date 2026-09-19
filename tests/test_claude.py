@@ -153,6 +153,45 @@ class Hooks(Case):
         self.assertEqual(self.settings(), {})
 
 
+class StatusLine(Case):
+    def settings(self):
+        return json.loads((self.home / ".claude" / "settings.json").read_text())
+
+    def run_line(self, command, payload):
+        return subprocess.run(command, shell=True, input=json.dumps(payload), text=True, stdout=subprocess.PIPE,
+                              env={**os.environ, "HOME": str(self.home)}, check=True).stdout
+
+    def test_wraps_the_users_command_and_gives_it_back(self):
+        f = self.home / ".claude" / "settings.json"
+        f.parent.mkdir(parents=True)
+        original = {"statusLine": {"type": "command", "command": "printf 'it is %s' \"$(cat | wc -c | tr -d ' ')\"", "padding": 0}}
+        f.write_text(json.dumps(original))
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.install_hooks()
+            cli.install_hooks()
+        sl = self.settings()["statusLine"]
+        self.assertEqual(sl["padding"], 0)
+        payload = {"rate_limits": {"five_hour": {"used_percentage": 10, "resets_at": 2000},
+                                   "seven_day": {"used_percentage": 16, "resets_at": 9000}}}
+        self.assertEqual(self.run_line(sl["command"], payload), f"it is {len(json.dumps(payload))}")
+        from nizam.providers import get
+        self.assertEqual([(l.label, l.used, l.resets_at) for l in get("claude").limits(1000)],
+                         [("5-hour", 10.0, 2000), ("Weekly", 16.0, 9000)])
+        self.assertEqual([(l.label, l.used, l.resets_at) for l in get("claude").limits(3000)],
+                         [("5-hour", 0.0, None), ("Weekly", 16.0, 9000)])
+        with contextlib.redirect_stdout(io.StringIO()):
+            fx.uninstall_hooks()
+        self.assertEqual(self.settings(), original)
+
+    def test_no_limits_reported_writes_nothing(self):
+        (self.home / ".claude").mkdir()
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.install_hooks()
+        self.assertEqual(self.run_line(self.settings()["statusLine"]["command"], {"model": {}}), "")
+        from nizam.providers import get
+        self.assertEqual(get("claude").limits(1000), [])
+
+
 class Version(unittest.TestCase):
     def check(self, out):
         from nizam.providers import claude

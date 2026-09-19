@@ -55,6 +55,15 @@ class Transcript:
 
 
 @dataclass
+class Limit:
+    label: str             # which window of the plan, e.g. "5-hour"
+    used: float            # percent of it spent
+    resets_at: float | None
+    seen_at: float         # when the tool last reported it
+    window_secs: float | None = None
+
+
+@dataclass
 class HeadlessResult:
     text: str
     is_error: bool = False
@@ -98,6 +107,10 @@ class Provider:
 
     def doctor(self) -> tuple[bool, list[str]]:
         return True, []
+
+    def limits(self, now: float) -> list[Limit]:
+        """The plan's usage windows as the tool last reported them, shortest first."""
+        return []
 
     def signal(self, event: dict) -> Signal:
         """One line of events.jsonl, as this tool's hook wrote it."""

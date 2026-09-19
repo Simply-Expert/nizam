@@ -59,7 +59,8 @@ curl -fsSL https://raw.githubusercontent.com/Simply-Expert/nizam/main/install.sh
 ```
 
 That clones the code to `~/.nizam/src`, installs Claude Code hooks into `~/.claude/settings.json`
-(a backup is kept beside it), builds a small PyObjC venv, links a `nizam` command, and starts the
+(a backup is kept beside it; your status line command is wrapped, not replaced, so the badge can show
+plan usage), builds a small PyObjC venv, links a `nizam` command, and starts the
 app. It installs the newest tagged release; re-run the same line to upgrade, or set `NIZAM_REF=main`
 to follow development. Nothing phones home and nothing needs an API key.
 

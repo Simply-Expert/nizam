@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from urllib.parse import quote
 
 from AppKit import (
@@ -51,6 +52,10 @@ NSLineBreakByTruncatingTail = 4
 BADGE_H = 28
 LIST_W, LIST_ROW_H, LIST_HEAD_H, LIST_PAD, LIST_MAX = 300, 38, 26, 6, 10
 HOVER_LINGER_SECS = 0.3
+LIMITS = "limits"
+LIMIT_WARN, LIMIT_HIGH = 70, 90
+LIMIT_AHEAD = 10             # points of slack before use counts as ahead of pace
+LIMIT_STALE_SECS = 30 * 60   # headless runs spend the plan without reporting it
 
 
 # bucket -> (SF Symbol, fallback glyph, colour, tooltip wording)
@@ -66,12 +71,7 @@ def _shown(counts: dict) -> list[str]:
     return [k for k in SEGMENTS if counts[k] or k == "inbox"]
 
 
-def _segment(bucket: str, n: int, font, tint_count: bool) -> NSAttributedString:
-    symbol, glyph, color_fn, _ = SEGMENTS[bucket]
-    color = color_fn()
-    count_attrs = {NSFontAttributeName: font}
-    if tint_count:
-        count_attrs[NSForegroundColorAttributeName] = color
+def _icon(symbol: str, glyph: str, color, font) -> NSMutableAttributedString:
     out = NSMutableAttributedString.alloc().init()
     img = NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol, None)
     if img is None:
@@ -88,8 +88,72 @@ def _segment(bucket: str, n: int, font, tint_count: bool) -> NSAttributedString:
         # Sit the symbol on the digits' optical centre rather than the baseline.
         att.setBounds_(NSMakeRect(0, (font.capHeight() - sz.height) / 2, sz.width, sz.height))
         out.appendAttributedString_(NSAttributedString.attributedStringWithAttachment_(att))
+    return out
+
+
+def _segment(bucket: str, n: int, font, tint_count: bool) -> NSAttributedString:
+    symbol, glyph, color_fn, _ = SEGMENTS[bucket]
+    color = color_fn()
+    count_attrs = {NSFontAttributeName: font}
+    if tint_count:
+        count_attrs[NSForegroundColorAttributeName] = color
+    out = _icon(symbol, glyph, color, font)
     out.appendAttributedString_(NSAttributedString.alloc().initWithString_attributes_(f" {n}", count_attrs))
     return out
+
+
+def _passed(limit: dict, now: float) -> float | None:
+    """Percent of the window already gone."""
+    if not (limit["resets_at"] and limit.get("window_secs")):
+        return None
+    return min(max(1 - (limit["resets_at"] - now) / limit["window_secs"], 0), 1) * 100
+
+
+def _limit_color(limit: dict, now: float):
+    if now - limit["seen_at"] > LIMIT_STALE_SECS:
+        return NSColor.tertiaryLabelColor()
+    if limit["used"] >= LIMIT_HIGH:
+        return NSColor.systemRedColor()
+    passed = _passed(limit, now)
+    if limit["used"] >= LIMIT_WARN or (passed is not None and limit["used"] - passed > LIMIT_AHEAD):
+        return NSColor.systemOrangeColor()
+    return NSColor.secondaryLabelColor()
+
+
+def _limits_segment(limits: list, font) -> NSAttributedString:
+    now = time.time()
+    worst = max(limits, key=lambda l: l["used"])
+    out = _icon("gauge.with.needle", "◔", _limit_color(worst, now), font)
+    for i, l in enumerate(limits):
+        out.appendAttributedString_(NSAttributedString.alloc().initWithString_attributes_(
+            " · " if i else " ", {NSFontAttributeName: font, NSForegroundColorAttributeName: NSColor.tertiaryLabelColor()}))
+        out.appendAttributedString_(NSAttributedString.alloc().initWithString_attributes_(
+            f"{l['used']:.0f}%", {NSFontAttributeName: font, NSForegroundColorAttributeName: _limit_color(l, now)}))
+    return out
+
+
+def _span(secs: float) -> str:
+    m = int(secs // 60)
+    if m < 60:
+        return f"{m}m"
+    if m < 48 * 60:
+        return f"{m // 60}h {m % 60}m"
+    return f"{m // 1440}d {m % 1440 // 60}h"
+
+
+def _limit_rows(limits: list) -> list[dict]:
+    now = time.time()
+    rows = []
+    for l in limits:
+        resets = (time.strftime("resets %a %H:%M", time.localtime(l["resets_at"])) + f" · in {_span(l['resets_at'] - now)}"
+                  if l["resets_at"] else "window restarted")
+        title = f"{l['label']} · {l['used']:.0f}% used"
+        passed = _passed(l, now)
+        if passed is not None:
+            title += f" · {passed:.0f}% of time passed"
+        rows.append({"id": None, "inert": True, "title": title,
+                     "sub": f"{resets} · seen {_span(now - l['seen_at'])} ago"})
+    return rows
 
 
 def _legend(counts: dict) -> str:
@@ -148,6 +212,7 @@ class BadgeView(NSView):
     """A draggable capsule showing the counts. Click toggles the popover; hovering a count lists what is behind it."""
     delegate = objc.ivar()
     counts = objc.ivar()
+    limits = objc.ivar()
     _spans = objc.ivar()
     _down = objc.ivar()
     _dragged = objc.ivar()
@@ -158,6 +223,7 @@ class BadgeView(NSView):
             return None
         self.delegate = delegate
         self.counts = {"needs": 0, "working": 0, "inbox": 0, "due": 0}
+        self.limits = []
         self._dragged = False
         self._spans = []
         return self
@@ -172,7 +238,10 @@ class BadgeView(NSView):
     @objc.python_method
     def segments(self):
         font = NSFont.systemFontOfSize_weight_(12, NSFontWeightSemibold)
-        return [_segment(k, self.counts[k], font, True) for k in _shown(self.counts)]
+        out = [(k, _segment(k, self.counts[k], font, True)) for k in _shown(self.counts)]
+        if self.limits:
+            out.append((LIMITS, _limits_segment(self.limits, font)))
+        return out
 
     @objc.python_method
     def _hover(self, event):
@@ -193,7 +262,7 @@ class BadgeView(NSView):
     @objc.python_method
     def desired_width(self):
         w = 14
-        for a in self.segments():
+        for _, a in self.segments():
             w += a.size().width + 12
         return max(60, w + 2)
 
@@ -207,7 +276,7 @@ class BadgeView(NSView):
         path.stroke()
         x = 8.0
         spans = []
-        for k, a in zip(_shown(self.counts), self.segments()):
+        for k, a in self.segments():
             sz = a.size()
             a.drawAtPoint_(NSMakePoint(x, (b.size.height - sz.height) / 2))
             spans.append((k, x, x + sz.width + 6))
@@ -320,10 +389,11 @@ class HoverListView(NSView):
                 NSParagraphStyleAttributeName: para,
             }).drawInRect_(NSMakeRect(x, y, b.size.width - x - 12, size + 5))
 
-        text(self.head, 12, 7, 11, NSFontWeightSemibold, SEGMENTS[self.bucket][2]())
+        head_color = SEGMENTS[self.bucket][2]() if self.bucket in SEGMENTS else NSColor.secondaryLabelColor()
+        text(self.head, 12, 7, 11, NSFontWeightSemibold, head_color)
         for i, row in enumerate(self.rows):
             y = LIST_HEAD_H + i * LIST_ROW_H
-            if i == self.hot:
+            if i == self.hot and not row.get("inert"):
                 NSColor.labelColor().colorWithAlphaComponent_(0.1).setFill()
                 NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
                     NSMakeRect(4, y, b.size.width - 8, LIST_ROW_H), 6, 6).fill()
@@ -459,10 +529,13 @@ class AppDelegate(NSObject):
                 needs_now[f"{r['id']}:{r['last']['run_id']}"] = n
                 items["needs"].append({"id": r["id"], "title": r["name"], "sub": f"{n['agent_name']} · {n['label']}"})
         counts = {k: len(v) for k, v in items.items()}
+        limits = snap.get("limits", [])
+        items[LIMITS] = _limit_rows(limits)
         self.items = items
         self._sync_list()
         self._set_title(counts)
         self.badge_view.counts = counts
+        self.badge_view.limits = limits
         self.badge.setContentSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
         self.badge_view.setFrameSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
         self.badge_view.setNeedsDisplay_(True)
@@ -533,7 +606,7 @@ class AppDelegate(NSObject):
             return
         v = self.list_view
         v.bucket = self.hover_bucket
-        v.head = SEGMENTS[self.hover_bucket][3].format(n=len(rows))
+        v.head = SEGMENTS[self.hover_bucket][3].format(n=len(rows)) if self.hover_bucket in SEGMENTS else "Plan usage"
         more = len(rows) - LIST_MAX
         v.rows = rows[:LIST_MAX] + ([{"id": None, "title": f"+{more} more", "sub": "Open the board"}] if more > 0 else [])
         h = v.desired_height()
@@ -549,6 +622,8 @@ class AppDelegate(NSObject):
 
     @objc.python_method
     def list_picked(self, row):
+        if row.get("inert"):
+            return
         self.hide_list()
         if row.get("session"):
             launcher = self.board.persist.data["prefs"].get("launcher", "Terminal")

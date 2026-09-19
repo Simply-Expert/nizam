@@ -19,7 +19,8 @@ import sys
 import time
 from pathlib import Path
 
-from .base import (ACTIVITY, ANSWERED, ENDED, NEEDS, TURN_DONE, WORKING, HeadlessResult, Provider, Runtime,
+from ..paths import NIZAM_DIR
+from .base import (ACTIVITY, ANSWERED, ENDED, NEEDS, TURN_DONE, WORKING, HeadlessResult, Limit, Provider, Runtime,
                    Signal, Transcript)
 
 CLAUDE_DIR = Path.home() / ".claude"
@@ -47,6 +48,11 @@ HOOK_EVENTS = {
 }
 HOOK_SCRIPT = Path(__file__).resolve().parents[1] / "hook.py"
 MARK = "nizam/hook.py"
+STATUSLINE_SCRIPT = Path(__file__).resolve().parents[1] / "statusline.py"
+STATUSLINE_MARK = "nizam/statusline.py"
+USAGE_FILE = NIZAM_DIR / "usage-claude.json"
+# rate_limits keys (Claude >= 2.1.251) -> label, length of the window
+LIMIT_WINDOWS = {"five_hour": ("5-hour", 5 * 3600.0), "seven_day": ("Weekly", 7 * 86400.0)}
 
 NEEDS_EVENTS = {
     ("Notification", "permission_prompt"): "Permission needed",
@@ -265,6 +271,18 @@ def _strip_ours(hooks: dict) -> dict:
     return out
 
 
+def _unwrap_statusline(d: dict) -> None:
+    """Put the user's own status line command back where ours wraps it."""
+    sl = d.get("statusLine")
+    if not isinstance(sl, dict) or STATUSLINE_MARK not in str(sl.get("command", "")):
+        return
+    theirs = shlex.split(sl["command"])[3:]
+    if theirs and theirs[0]:
+        sl["command"] = theirs[0]
+    else:
+        d.pop("statusLine")
+
+
 class Claude(Provider):
     name = "claude"
     cli = "claude"
@@ -298,6 +316,14 @@ class Claude(Provider):
                 g["matcher"] = matcher
             hooks.setdefault(ev, []).append(g)
         d["hooks"] = hooks
+        # The status line is the only place Claude reports plan usage, and there is one slot: wrap what is there.
+        _unwrap_statusline(d)
+        sl = d.get("statusLine") if isinstance(d.get("statusLine"), dict) else {}
+        theirs = sl.get("command", "") if sl.get("type", "command") == "command" else ""
+        if theirs or not sl:
+            wrapped = f"{shlex.quote(sys.executable or 'python3')} {shlex.quote(str(STATUSLINE_SCRIPT))} {self.name}"
+            d["statusLine"] = {**sl, "type": "command",
+                               "command": f"{wrapped} {shlex.quote(theirs)}" if theirs else wrapped}
         _save_settings(d)
         return [f"✓ hooks installed in {CLAUDE_SETTINGS} (backup: settings.json.bak-nizam)",
                 "  Live sessions pick them up on their next event; no restart needed."]
@@ -307,6 +333,7 @@ class Claude(Provider):
         d["hooks"] = _strip_ours(d.get("hooks") or {})
         if not d["hooks"]:
             d.pop("hooks")
+        _unwrap_statusline(d)
         _save_settings(d)
         return ["✓ nizam hooks removed"]
 
@@ -348,8 +375,27 @@ class Claude(Provider):
         ours = sum(1 for gs in (_load_settings().get("hooks") or {}).values() for g in gs
                    for h in g.get("hooks", []) if MARK in str(h.get("command", "")))
         runtime_files = len(list(CLAUDE_SESSIONS.glob("*.json"))) if CLAUDE_SESSIONS.is_dir() else 0
+        wrapped = STATUSLINE_MARK in str((_load_settings().get("statusLine") or {}).get("command", ""))
         return version_ok and ours == len(HOOK_EVENTS), [version_line, f"hooks installed: {ours}/{len(HOOK_EVENTS)}",
-                                                         f"runtime files: {runtime_files}"]
+                                                         f"runtime files: {runtime_files}",
+                                                         f"plan usage: {'status line wired' if wrapped else 'not wired'}"]
+
+    def limits(self, now: float) -> list[Limit]:
+        try:
+            d = json.loads(USAGE_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        out = []
+        for key, (label, window) in LIMIT_WINDOWS.items():
+            w = (d.get("rate_limits") or {}).get(key)
+            if not isinstance(w, dict) or not isinstance(w.get("used_percentage"), (int, float)):
+                continue
+            resets_at = w.get("resets_at")
+            if resets_at and resets_at <= now:     # the window rolled over with nothing reported since
+                out.append(Limit(label, 0.0, None, d.get("ts", 0), window))
+            else:
+                out.append(Limit(label, float(w["used_percentage"]), resets_at, d.get("ts", 0), window))
+        return out
 
     def signal(self, event: dict) -> Signal:
         name = event.get("hook_event_name")
