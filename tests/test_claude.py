@@ -215,6 +215,24 @@ class Launch(unittest.TestCase):
         self.run.assert_called_once_with(f"cd '/w/my agent' && claude --resume {SID}", False, "Terminal", "/w/my agent")
         self.assertFalse(terminal.resume("x; rm -rf ~", "/w"))
 
+    def test_desktop_session_opens_by_the_apps_own_id(self):
+        from nizam.providers import claude
+        store = Path(tempfile.mkdtemp())
+        org = store / "acct" / "org"
+        org.mkdir(parents=True)
+        (org / "local_abc-1.json").write_text(json.dumps({"sessionId": "local_abc-1", "cliSessionId": SID}))
+        (org / "local_bad.json").write_text("{")
+        s = {"id": SID, "live": False, "pid": None, "cwd": "/w", "title": "t", "provider": "claude"}
+        with mock.patch.object(claude, "DESKTOP_SESSIONS", store), \
+             mock.patch.object(terminal.subprocess, "Popen") as popen:
+            self.assertTrue(terminal.open_session(s))
+            self.assertEqual(popen.call_args.args[0],
+                             ["open", "claude://code/continue?session=local_abc-1&source=nizam"])
+            self.run.assert_not_called()
+            self.assertTrue(terminal.open_session({**s, "id": SID.replace("2", "3")}))
+            self.assertEqual(popen.call_count, 1)
+        self.run.assert_called_once()
+
     def test_clean_env(self):
         with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "s", "CLAUDECODE": "1", "AI_AGENT": "a",
                                           "ENABLE_CLAUDEAI_MCP_SERVERS": "1", "NIZAM_KEEP": "1"}):

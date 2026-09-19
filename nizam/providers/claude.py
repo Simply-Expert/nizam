@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -25,6 +26,8 @@ CLAUDE_PROJECTS = CLAUDE_DIR / "projects"
 CLAUDE_SESSIONS = CLAUDE_DIR / "sessions"      # runtime status files (Claude >= 2.1.158)
 CLAUDE_SETTINGS = CLAUDE_DIR / "settings.json"
 SKILL_DST = CLAUDE_DIR / "skills" / "nizam" / "SKILL.md"
+DESKTOP_SESSIONS = Path.home() / "Library" / "Application Support" / "Claude" / "claude-code-sessions"
+_DESKTOP_ID = re.compile(r"^local_[A-Za-z0-9-]{1,64}$")
 
 TAIL_BYTES = 256 * 1024
 PENDING_TOOLS = {"ExitPlanMode": "Plan to review", "AskUserQuestion": "Asking you"}
@@ -339,6 +342,18 @@ class Claude(Provider):
 
     def resume_command(self, session_id: str) -> str:
         return f"claude --resume {shlex.quote(session_id)}"
+
+    def desktop_url(self, session_id: str) -> str | None:
+        # The app files a session under its own id; the transcript's id is only a field inside.
+        for f in DESKTOP_SESSIONS.glob("*/*/local_*.json"):
+            try:
+                meta = json.loads(f.read_text())
+            except (OSError, ValueError):
+                continue
+            own = meta.get("sessionId")
+            if meta.get("cliSessionId") == session_id and isinstance(own, str) and _DESKTOP_ID.match(own):
+                return f"claude://code/continue?session={own}&source=nizam"
+        return None
 
     def clean_env(self, env: dict[str, str]) -> dict[str, str]:
         # A child that inherits CLAUDE_CODE_CHILD_SESSION refuses to save transcripts.

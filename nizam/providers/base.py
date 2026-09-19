@@ -109,6 +109,10 @@ class Provider:
     def resume_command(self, session_id: str) -> str:
         raise NotImplementedError
 
+    def desktop_url(self, session_id: str) -> str | None:
+        """Deep link that opens this session in desktop_app, if the app holds it."""
+        return None
+
     def clean_env(self, env: dict[str, str]) -> dict[str, str]:
         """env without the markers a session of this tool leaves for its children."""
         return env

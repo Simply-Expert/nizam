@@ -20,6 +20,7 @@ def point_at(home: Path) -> list:
             mock.patch.object(claude, "CLAUDE_SESSIONS", dot / "sessions"),
             mock.patch.object(claude, "CLAUDE_SETTINGS", dot / "settings.json"),
             mock.patch.object(claude, "SKILL_DST", dot / "skills" / "nizam" / "SKILL.md"),
+            mock.patch.object(claude, "DESKTOP_SESSIONS", home / "desktop-sessions"),
             mock.patch.object(state, "EVENTS_FILE", home / ".nizam" / "events.jsonl"),
             mock.patch.object(state, "STATE_FILE", home / ".nizam" / "state.json"),
             mock.patch.object(state.requests_mod, "board_rows", lambda now: []),

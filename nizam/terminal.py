@@ -158,9 +158,20 @@ end tell"""
     return "found" in _osascript(script)
 
 
-def focus(pid: int, cwd: str = "", titles: list[str] | None = None, provider: str | None = None) -> bool:
+def open_in_desktop(session_id: str, provider: str | None = None) -> bool:
+    url = providers.get(provider).desktop_url(session_id) if _SAFE_ID.match(session_id) else None
+    if not url:
+        return False
+    subprocess.Popen(["open", url], env=clean_env(), **_DETACHED)
+    return True
+
+
+def focus(pid: int, cwd: str = "", titles: list[str] | None = None, provider: str | None = None,
+          session_id: str = "") -> bool:
     host = session_host(pid)
     if host["kind"] == "desktop":
+        if open_in_desktop(session_id, provider):
+            return True
         app = providers.get(provider).desktop_app
         if not app:
             return False
@@ -227,7 +238,10 @@ def resume(session_id: str, cwd: str, paste_only: bool = False, launcher: str = 
 
 
 def open_session(s: dict, launcher: str = "Terminal", paste_only: bool = False) -> bool:
-    if s["live"] and s["pid"] and focus(s["pid"], s["cwd"], [s.get("auto_title", ""), s["title"]], s["provider"]):
+    if s["live"] and s["pid"] and focus(s["pid"], s["cwd"], [s.get("auto_title", ""), s["title"]],
+                                        s["provider"], s["id"]):
+        return True
+    if not s["live"] and open_in_desktop(s["id"], s["provider"]):
         return True
     return resume(s["id"], s["cwd"], paste_only, launcher, s["provider"])
 
