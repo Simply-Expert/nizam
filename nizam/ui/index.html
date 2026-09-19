@@ -44,6 +44,7 @@ textarea { min-height: 84px; resize: vertical; }
 .cnt .w { background: var(--working-bg); color: var(--working); }
 .cnt .i { background: var(--inbox-bg); color: var(--inbox); }
 .cnt .f { background: var(--due-bg); color: var(--due); }
+.cnt .q { background: var(--accent-bg); color: var(--accent); }
 .dot { font-size: 11px; width: 14px; display: inline-block; text-align: center; }
 .dot.needs { color: var(--needs); } .dot.working { color: var(--working); } .dot.inbox { color: var(--inbox); } .dot.closed { color: var(--muted); } .dot.done { color: var(--done); }
 .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--done-bg); color: var(--muted); }
@@ -100,6 +101,10 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .dot.fu { color: var(--muted); font-size: 9px; } .dot.fu.overdue { color: var(--needs); } .dot.fu.today { color: var(--working); }
 .ago.due.overdue { color: var(--needs); font-weight: 600; } .ago.due.today { color: var(--working); font-weight: 600; }
 .lsec.fu { color: var(--due); }
+.lsec.rq { color: var(--accent); }
+.dot.rq { color: var(--accent); font-size: 10px; } .dot.rq.aging { color: var(--working); } .dot.rq.old { color: var(--needs); }
+.ago.rq.aging { color: var(--working); } .ago.rq.old { color: var(--needs); }
+.detail textarea.rqbody { max-width: 820px; min-height: 160px; line-height: 1.55; padding: 14px 16px; border-radius: 10px; }
 .dot.rt { color: var(--muted); } .dot.rt.completed { color: var(--inbox); } .dot.rt.running { color: var(--working); }
 .dot.rt.incomplete, .dot.rt.errored, .dot.rt.timed_out { color: var(--needs); }
 .item.rt.off { opacity: .6; }
@@ -240,8 +245,9 @@ function touchAgos() {
 }
 
 function counts(list) { const c = {needs:0, working:0, inbox:0, closed:0, done:0}; for (const s of list) c[s.bucket]++; return c; }
-function badges(c, late) { return `<span class="cnt">${late?`<b class="f" title="Follow-ups overdue or due today">◆${late}</b>`:''}${c.needs?`<b class="n">${c.needs}</b>`:''}${c.working?`<b class="w">${c.working}</b>`:''}${c.inbox?`<b class="i">${c.inbox}</b>`:''}</span>`; }
+function badges(c, late, reqs) { return `<span class="cnt">${reqs?`<b class="q" title="Requests from other agents">▸${reqs}</b>`:''}${late?`<b class="f" title="Follow-ups overdue or due today">◆${late}</b>`:''}${c.needs?`<b class="n">${c.needs}</b>`:''}${c.working?`<b class="w">${c.working}</b>`:''}${c.inbox?`<b class="i">${c.inbox}</b>`:''}</span>`; }
 function lateCount(root) { return (DATA.followups || []).filter(f => (!root || f.agent === root) && f.due !== 'upcoming').length; }
+function requestCount(root) { return (DATA.requests || []).filter(q => !root || q.agent === root).length; }
 function failingCount(root) { return (DATA.routines || []).filter(r => (!root || r.agent === root) && r.failing).length; }
 function countsFor(list, root) { const c = counts(list); c.needs += failingCount(root); return c; }
 function byAgent(root) { return DATA.sessions.filter(s => s.agent === root); }
@@ -276,13 +282,13 @@ function render() {
 function renderSide() {
   const all = visible(DATA.sessions);
   let h = `<div class="brand">Nizam <span class="ar">نظام</span><span class="sp"></span><button class="primary" id="newBtn" title="New session (n)">＋</button></div>`;
-  h += `<div class="row ${!SEL.agent?'on':''}" data-a=""><span class="name">All agents</span>${badges(countsFor(all, null), lateCount(null))}</div>`;
+  h += `<div class="row ${!SEL.agent?'on':''}" data-a=""><span class="name">All agents</span>${badges(countsFor(all, null), lateCount(null), requestCount(null))}</div>`;
   h += `<div class="sec">Agents</div>`;
   const agents = sortedAgents();
   for (const a of agents) {
     const list = visible(byAgent(a.root));
-    if (!list.length && !showDone && !a.pinned && !lateCount(a.root) && !failingCount(a.root)) continue;
-    h += `<div class="row agent ${SEL.agent===a.root?'on':''}" draggable="true" data-root="${esc(a.root)}" data-a="${esc(a.root)}" title="${esc(a.display)}\nDrag to reorder · right-click to rename or pin">${a.pinned?'<span class="pin">📌</span>':''}<span class="name">${esc(a.display_name)}</span>${badges(countsFor(list, a.root), lateCount(a.root))}</div>`;
+    if (!list.length && !showDone && !a.pinned && !lateCount(a.root) && !failingCount(a.root) && !requestCount(a.root)) continue;
+    h += `<div class="row agent ${SEL.agent===a.root?'on':''}" draggable="true" data-root="${esc(a.root)}" data-a="${esc(a.root)}" title="${esc(a.display)}\nDrag to reorder · right-click to rename or pin">${a.pinned?'<span class="pin">📌</span>':''}<span class="name">${esc(a.display_name)}</span>${badges(countsFor(list, a.root), lateCount(a.root), requestCount(a.root))}</div>`;
   }
   h += `<div class="foot"><label class="chk"><input type="checkbox" id="showDone" ${showDone?'checked':''}> Show done</label></div>`;
   const side = $('#side'); side.innerHTML = h;
@@ -363,6 +369,11 @@ function followupRow(f, showAgent) {
   const where = (showAgent && a ? esc(a.display_name) : '') + (f.area ? (showAgent ? ' › ' : '') + esc(f.area) : '');
   return `<div class="item fu ${f.due} ${CUR===f.id?'on':''}" data-id="${f.id}"><span class="dot fu ${f.due}">◆</span><span class="t">${esc(f.title)}</span><span class="ago due ${f.due}">${dueLabel(f)}</span>${where?`<span class="where">${where}</span>`:''}<span class="p">${esc((f.body || '').split('\n')[0])}</span></div>`;
 }
+function requestRow(q, showAgent) {
+  const a = agentOf(q.agent);
+  const where = `from ${esc(q.from)}` + (showAgent && a ? ` → ${esc(a.display_name)}` : '');
+  return `<div class="item rq ${CUR===q.id?'on':''}" data-id="${q.id}"><span class="dot rq ${q.age}">▸</span><span class="t">${esc(q.title)}</span><span class="ago rq ${q.age}">${q.status === 'started' ? 'started · ' : ''}${esc(q.ago)}</span><span class="where">${where}</span></div>`;
+}
 const RT_STATUS = {completed: 'Completed', incomplete: 'Incomplete', errored: 'Errored', timed_out: 'Timed out', running: 'Running', never: 'Never ran'};
 const RT_DOT = {completed: '✓', incomplete: '!', errored: '!', timed_out: '!', running: '◐', never: '○'};
 function routinesFor(agentRoot, areaRel) {
@@ -416,13 +427,19 @@ function renderList() {
     rts.forEach(r => NAV.push(r.id));
     return section(bad ? 'needs' : 'fu', SEL.agent ? 'Routines' : 'Routines failing', rts.length + (bad && SEL.agent ? ` · ${bad} failing` : '')) + rts.map(r => routineRow(r, !SEL.agent)).join('');
   };
-  if (!SEL.agent) h += rtHtml() + fuHtml();
+  const rqs = SEL.area ? [] : (DATA.requests || []).filter(q => !SEL.agent || q.agent === SEL.agent);
+  const rqHtml = () => {
+    if (!rqs.length) return '';
+    rqs.forEach(q => NAV.push(q.id));
+    return section('rq', 'Requests', rqs.length) + rqs.map(q => requestRow(q, !SEL.agent)).join('');
+  };
+  if (!SEL.agent) h += rtHtml() + fuHtml() + rqHtml();
   let last = null;
   for (const s of open) {
     if (s.bucket !== last) { h += section(s.bucket, SECTION[s.bucket], open.filter(x => x.bucket === s.bucket).length); last = s.bucket; }
     NAV.push(s.id); h += sessionRow(s);
   }
-  if (SEL.agent) h += fuHtml() + rtHtml();
+  if (SEL.agent) h += rqHtml() + fuHtml() + rtHtml();
   if (done.length) { h += section('done', SECTION.done, done.length); done.forEach(s => { NAV.push(s.id); h += sessionRow(s); }); }
   if (!NAV.length) h += `<div class="empty">${SEL.agent ? 'Nothing waiting from this agent' : 'Nothing waiting'}</div>`;
   const el = $('#list'); el.innerHTML = h;
@@ -445,7 +462,7 @@ function renderList() {
   });
   if ((!CUR || !NAV.includes(CUR)) && NAV.length && window.innerWidth > 760) { CUR = NAV[0]; renderListSelection(); }
 }
-function openSession(id) { if (id && !/^[fr]:/.test(id)) api(`/api/sessions/${id}/open`, {}); }
+function openSession(id) { if (id && !/^[frq]:/.test(id)) api(`/api/sessions/${id}/open`, {}); }
 function renderListSelection() { document.querySelectorAll('.item').forEach(i => i.classList.toggle('on', i.dataset.id === CUR)); }
 
 /* ---------- detail ---------- */
@@ -465,6 +482,36 @@ function renderFollowup(d, f) {
     if (r.error) { toast(r.error); return; }
     toast('Session started for this follow-up', true); setTimeout(() => refresh(true), 1500);
   });
+  $('#back').addEventListener('click', () => { detailOpen = false; render(); });
+}
+function renderRequest(d, q) {
+  // A board refresh must not wipe the text being edited.
+  if (d.dataset.rq === q.id && document.activeElement && document.activeElement.id === 'rqBody') return;
+  const a = agentOf(q.agent);
+  const draft = d.dataset.rq === q.id && $('#rqBody') ? $('#rqBody').value : q.body;
+  d.dataset.rq = q.id;
+  const sender = q.from_session && DATA.sessions.some(s => s.id === q.from_session);
+  d.innerHTML = `
+    <button class="back quiet" id="back">‹ Back</button>
+    <h1>${esc(q.title)}</h1>
+    <div class="meta">request from <b>${esc(q.from)}</b> to <b>${esc(a ? a.display_name : '')}</b> · sent ${esc(q.ago)} ago${q.status === 'started' ? ' · session started' : ''}</div>
+    <div class="actions">
+      <button class="primary" id="rqStart" title="Open a session in ${esc(a ? a.display_name : '')}, in plan mode, with this text quoted as a request from ${esc(q.from)}">${q.status === 'started' ? 'Start another session' : 'Start session'}</button>
+      ${q.session_id ? `<button id="rqOpen">Open its session</button>` : ''}
+      ${sender ? `<button id="rqSender" title="The session in ${esc(q.from)} that sent this">Open sender's session</button>` : ''}
+      <button id="rqDismiss" title="Remove it without starting anything">Dismiss</button>
+    </div>
+    <textarea class="rqbody" id="rqBody" maxlength="2000" spellcheck="false"></textarea>
+    <div class="path">Written by the agent "${esc(q.from)}", not by you. Edit it before starting if you want; the receiving agent is told to weigh it, not obey it.</div>`;
+  $('#rqBody').value = draft;
+  $('#rqStart').addEventListener('click', async () => {
+    const r = await api('/api/requests/start', {id: q.id, body: $('#rqBody').value});
+    if (r.error) { toast(r.error); return; }
+    toast('Session started in plan mode', true); setTimeout(() => refresh(true), 1500);
+  });
+  $('#rqDismiss').addEventListener('click', async () => { await api('/api/requests/dismiss', {id: q.id}); CUR = null; refresh(true); });
+  if (q.session_id) $('#rqOpen').addEventListener('click', () => openSession(q.session_id));
+  if (sender) $('#rqSender').addEventListener('click', () => openSession(q.from_session));
   $('#back').addEventListener('click', () => { detailOpen = false; render(); });
 }
 function renderRoutine(d, r) {
@@ -508,6 +555,9 @@ function renderDetail() {
   const d = $('#detail');
   const rt = (DATA.routines || []).find(x => x.id === CUR);
   if (rt) { d.classList.toggle('open', detailOpen); return renderRoutine(d, rt); }
+  const q = (DATA.requests || []).find(x => x.id === CUR);
+  if (q) { d.classList.toggle('open', detailOpen); return renderRequest(d, q); }
+  delete d.dataset.rq;
   const f = (DATA.followups || []).find(x => x.id === CUR);
   if (f) { d.classList.toggle('open', detailOpen); return renderFollowup(d, f); }
   const s = DATA.sessions.find(x => x.id === CUR);

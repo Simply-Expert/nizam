@@ -205,6 +205,32 @@ class Handler(BaseHTTPRequestHandler):
             b.invalidate()
             return self._json({"ok": True})
 
+        if parts[:2] == ["api", "requests"] and len(parts) == 3:
+            from . import requests
+            q = next((x for x in b.snapshot()["requests"] if x["id"] == body.get("id")), None)
+            r = requests.index().get(q["rid"]) if q else None
+            if not r:
+                return self._json({"error": "unknown request"}, 404)
+            if parts[2] == "start":
+                if not Path(r["to_root"]).is_dir():
+                    return self._json({"error": "That agent's folder is missing"}, 400)
+                text = requests.clean(str(body["body"])) if "body" in body else r["body"]
+                if not text:
+                    return self._json({"error": "The request is empty; dismiss it instead"}, 400)
+                # Plan mode: another agent wrote this text, so nothing is edited before the user has read the reply.
+                sid = terminal.start(r["to_root"], prompt=requests.launch_prompt(r, text), permission_mode="plan",
+                                     paste_only=bool(body.get("paste")), launcher=launcher)
+                requests.set_status(r["id"], "started", by="user", session_id=sid,
+                                    **({"edited": text} if text != r["body"] else {}))
+                b.persist.rename(sid, f"From {r['from']}: {q['title']}"[:90])
+                b.invalidate()
+                return self._json({"ok": True, "session_id": sid})
+            if parts[2] == "dismiss":
+                requests.set_status(r["id"], "dismissed", by="user")
+                b.invalidate()
+                return self._json({"ok": True})
+            return self._json({"error": "unknown action"}, 400)
+
         if parts == ["api", "prefs"]:
             for k, v in body.items():
                 if k in ("launcher", "show_done", "density", "selected", "theme"):

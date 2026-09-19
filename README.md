@@ -97,6 +97,31 @@ session it manages areas:
 /nizam followup done banner
 ```
 
+## Requests
+
+One agent can leave a request for another: finance notices a contract clause, and leaves it for legal.
+You stay in the middle. A request is only queued; the board shows it under the receiving agent, and
+that agent sees it when you press Start session or ask it to check (`nizam request list`). Nothing is
+delivered on its own.
+
+You decide who may write to whom in `~/.nizam/requests/links.md`:
+
+```markdown
+finance = ~/work/finance — invoices, budgets, tax
+legal   = ~/work/legal — contracts, compliance
+
+finance -> legal: contract review only
+```
+
+An agent only ever learns of the peers it has a link to (`nizam request peers`), described in your
+words. Links are routing, not a sandbox: every agent runs as you, so they keep honest agents in their
+lane and do nothing against a process that ignores them.
+
+The text of a request was written by an agent, possibly after reading mail or the web. So the board
+shows it in full and lets you edit it before starting; the session starts in plan mode; and the text
+is handed over as a quoted request to weigh, not as your instruction. Routines cannot send requests, a
+session started from a request cannot send one on, and a request nobody touches expires after 14 days.
+
 A folder becomes visible on the board the moment it gets an `INSTRUCTIONS.md`.
 
 ## Routines
@@ -162,6 +187,10 @@ nizam uninstall       remove hooks, skill and start-at-login
 nizam routines list   this agent's routines: state, next run, last result
 nizam routines sync   install this agent's schedules into launchd; remove those of deleted routines
 nizam run <file>      run one routine now, headless
+nizam request peers   the agents this one may write to
+nizam request send <peer> <what>   leave a request; the user decides when it is seen
+nizam request list    requests waiting for this agent, and what it sent
+nizam request done <id>   close a request that was handled or declined
 nizam login on|off    start at login (LaunchAgent)
 nizam doctor          check wiring
 ```
@@ -173,6 +202,7 @@ nizam doctor          check wiring
 | `~/.nizam/state.json` | Your decisions: done flags, session titles, agent display names, pins, order, prefs |
 | `~/.nizam/events.jsonl` | Hook events, including short snippets of prompts and replies. Treat as private. |
 | `~/.nizam/routines` | Routine run records (`runs.jsonl`, with the tail of each run's final reply), per-run logs, locks. Treat as private. |
+| `~/.nizam/requests` | `links.md` (who may write to whom; yours to edit) and `requests.jsonl` (every request, refusal and outcome). Treat as private. |
 | `~/Library/LaunchAgents/co.nizam.routine.*` | One per scheduled routine; written by `nizam routines sync`, removed by `nizam uninstall` |
 | `~/.nizam/venv` | PyObjC for the Mac shell |
 | `~/.nizam/src` | The code, when installed with the one-liner |
