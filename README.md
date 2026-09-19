@@ -14,6 +14,8 @@ menu bar and a floating badge, and opens the same board in a popover or a browse
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-2.1.158%2B-orange" />
 </p>
 
+![The Nizam board: agents on the left, their sessions, follow-ups, routines and requests sorted by who needs you, and the selected session on the right](docs/board.png)
+
 ## Install
 
 ```bash
