@@ -1,7 +1,7 @@
-"""Claude Code hook entrypoint. Appends one JSON line per event to
+"""Hook entrypoint. Appends one JSON line per event to
 ~/.nizam/events.jsonl and never blocks or prints (exit 0 always).
 
-Installed into ~/.claude/settings.json by `nizam install`.
+`nizam install` wires it into each tool, with the provider's name as its one argument.
 """
 from __future__ import annotations
 
@@ -34,6 +34,8 @@ def main() -> int:
             qs = ti.get("questions")
             if isinstance(qs, list) and qs and isinstance(qs[0], dict):
                 ev["question"] = str(qs[0].get("question", ""))[:MAX_TEXT]
+        if len(sys.argv) > 1:
+            ev["provider"] = sys.argv[1]
         ev["ts"] = time.time()
         path = os.path.join(os.path.expanduser("~"), ".nizam", "events.jsonl")
         os.makedirs(os.path.dirname(path), exist_ok=True)

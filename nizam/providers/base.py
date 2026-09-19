@@ -68,6 +68,7 @@ class Provider:
     cli_dirs: tuple[Path, ...] = ()           # where it installs itself, beyond the login PATH
     desktop_app: str | None = None            # macOS app to raise for a session with no tty
     permission_modes: tuple[str, ...] = ()
+    takes_session_id = True                   # False when the tool mints its own
 
     def transcripts(self, max_age_secs: float) -> list[Transcript]:
         """Top-level sessions touched within max_age_secs."""
@@ -102,8 +103,8 @@ class Provider:
         """One line of events.jsonl, as this tool's hook wrote it."""
         return Signal(ACTIVITY)
 
-    def start_command(self, session_id: str, prompt: str, permission_mode: str) -> str:
-        """Shell command for a new interactive session that will carry session_id."""
+    def start_command(self, session_id: str | None, prompt: str, permission_mode: str) -> str:
+        """Shell command for a new interactive session; it carries session_id when one is given."""
         raise NotImplementedError
 
     def resume_command(self, session_id: str) -> str:
@@ -121,9 +122,14 @@ class Provider:
         """The session this process runs inside, if any."""
         return None
 
-    def headless_command(self, exe: str, session_id: str, system_prompt: str, meta: dict) -> list[str]:
-        """argv for one unattended run; the prompt arrives on stdin."""
+    def headless_command(self, exe: str, session_id: str | None, system_prompt: str, prompt: str,
+                         meta: dict) -> tuple[list[str], str]:
+        """argv and stdin for one unattended run. system_prompt goes wherever the tool takes one."""
         raise NotImplementedError
+
+    def headless_session_id(self, line: str) -> str | None:
+        """The run's session id, if this line of output announces it."""
+        return None
 
     def headless_result(self, line: str) -> HeadlessResult | None:
         """The final result, if this line of output is it."""

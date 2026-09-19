@@ -135,7 +135,9 @@ class Hooks(Case):
             "PreToolUse": ["AskUserQuestion|ExitPlanMode"], "PostToolUse": ["AskUserQuestion|ExitPlanMode"]})
         hook = ours["Stop"][0]["hooks"][0]
         self.assertEqual((hook["type"], hook["timeout"], hook["async"]), ("command", 5, True))
-        self.assertTrue(Path(hook["command"].split()[-1]).is_file())
+        script, provider = hook["command"].split()[-2:]
+        self.assertTrue(Path(script).is_file())
+        self.assertEqual(provider, "claude")
         self.assertEqual(json.loads(f.with_suffix(".json.bak-nizam").read_text()), original)
 
         with contextlib.redirect_stdout(io.StringIO()):
@@ -169,6 +171,13 @@ class HookScript(Case):
         self.assertEqual(ev, {"session_id": SID, "cwd": self.cwd, "hook_event_name": "Notification",
                               "notification_type": "permission_prompt", "message": "needs Bash",
                               "transcript_path": "/x.jsonl", "prompt": "p" * 600})
+
+    def test_stamps_the_provider_it_was_installed_for(self):
+        subprocess.run([sys.executable, str(REPO / "nizam" / "hook.py"), "fake"], text=True,
+                       input=json.dumps({"session_id": SID, "hook_event_name": "Stop"}),
+                       env={**os.environ, "HOME": str(self.home)}, check=True)
+        ev, = self.fire({"session_id": SID, "hook_event_name": "Stop", "agent_id": "sub-1"})
+        self.assertEqual(ev["provider"], "fake")
 
     def test_question_text(self):
         ev = self.fire({"session_id": SID, "hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion",

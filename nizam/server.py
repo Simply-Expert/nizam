@@ -136,7 +136,7 @@ class Handler(BaseHTTPRequestHandler):
                                  launcher=launcher)
             b.persist.set_pref("last_start", {"cwd": cwd, "permission_mode": body.get("permission_mode"),
                                               "at": time.time()})
-            if body.get("title"):
+            if sid and body.get("title"):
                 b.persist.rename(sid, str(body["title"]))
             return self._json({"ok": True, "session_id": sid})
 
@@ -218,7 +218,8 @@ class Handler(BaseHTTPRequestHandler):
                                      paste_only=bool(body.get("paste")), launcher=launcher)
                 requests.set_status(r["id"], "started", by="user", session_id=sid,
                                     **({"edited": text} if text != r["body"] else {}))
-                b.persist.rename(sid, f"From {r['from']}: {q['title']}"[:90])
+                if sid:
+                    b.persist.rename(sid, f"From {r['from']}: {q['title']}"[:90])
                 b.invalidate()
                 return self._json({"ok": True, "session_id": sid})
             if parts[2] == "dismiss":

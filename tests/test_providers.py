@@ -1,21 +1,34 @@
 """A second provider that names nothing of Claude Code, to keep the seam honest."""
+import json
 import os
+import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import fixtures as fx
-from nizam import providers, state, terminal
-from nizam.providers.base import ACTIVITY, NEEDS, TURN_DONE, Provider, Runtime, Signal, Transcript
+from nizam import providers, runner, state, terminal
+from nizam.providers.base import (ACTIVITY, NEEDS, TURN_DONE, HeadlessResult, Provider, Runtime, Signal,
+                                  Transcript)
 
 SID = "33333333-3333-4333-8333-333333333333"
+
+
+FAKE_CLI = """#!{python}
+import json, sys
+json.dump({{"argv": sys.argv[1:], "stdin": sys.stdin.read()}}, open({out!r}, "w"))
+print(json.dumps({{"started": "{sid}"}}))
+print(json.dumps({{"final": "Done.\\nOUTCOME: COMPLETE"}}))
+"""
 
 
 class Fake(Provider):
     name = "fake"
     cli = "fakecli"
+    takes_session_id = False
 
     def __init__(self, cwd: str, now: float):
         self.cwd, self.now = cwd, now
@@ -33,6 +46,16 @@ class Fake(Provider):
 
     def start_command(self, session_id, prompt, permission_mode):
         return f"fakecli new {session_id}"
+
+    def headless_command(self, exe, session_id, system_prompt, prompt, meta):
+        return [exe, "run", str(session_id)], f"{system_prompt}\n\n{prompt}"
+
+    def headless_session_id(self, line):
+        return json.loads(line).get("started")
+
+    def headless_result(self, line):
+        final = json.loads(line).get("final")
+        return HeadlessResult(text=final) if final else None
 
     def resume_command(self, session_id):
         return f"fakecli continue {session_id}"
@@ -73,8 +96,22 @@ class SecondProvider(unittest.TestCase):
         with mock.patch.object(terminal, "run_in_new_terminal") as run:
             terminal.resume(SID, "/w", provider="fake")
             sid = terminal.start("/w", provider="fake")
+        self.assertIsNone(sid)
         self.assertEqual([c.args[0] for c in run.call_args_list],
-                         [f"cd /w && fakecli continue {SID}", f"cd /w && fakecli new {sid}"])
+                         [f"cd /w && fakecli continue {SID}", "cd /w && fakecli new None"])
+
+    def test_headless_run_reports_the_id_the_tool_minted(self):
+        exe, out = self.home / "fakecli", self.home / "call.json"
+        exe.write_text(FAKE_CLI.format(python=sys.executable, out=str(out), sid=SID))
+        exe.chmod(0o755)
+        r = SimpleNamespace(name="daily", meta={}, prompt="Close the books.", cwd=self.home, timeout=30)
+        with mock.patch.object(runner, "POLL", 0.05):
+            res = runner._attempt(r, providers.get("fake"), str(exe), dict(os.environ), self.home / "run.log")
+        call = json.loads(out.read_text())
+        self.assertEqual((res["status"], res["session"], res["summary"]), ("completed", SID, "Done."))
+        self.assertEqual(call["argv"], ["run", "None"])
+        self.assertTrue(call["stdin"].startswith(runner.HEADLESS.format(name="daily") + "\n\nCurrent date/time: "))
+        self.assertTrue(call["stdin"].endswith("Close the books.\n"))
 
     def test_env_and_fallback(self):
         with mock.patch.dict(os.environ, {"FAKECLI_SESSION": "f-1", "CLAUDECODE": "1"}):

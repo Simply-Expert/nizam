@@ -288,7 +288,7 @@ class Claude(Provider):
     def install_hooks(self) -> list[str]:
         d = _load_settings()
         hooks = _strip_ours(d.get("hooks") or {})
-        command = f"{sys.executable or 'python3'} {HOOK_SCRIPT}"
+        command = f"{sys.executable or 'python3'} {HOOK_SCRIPT} {self.name}"
         for ev, matcher in HOOK_EVENTS.items():
             g = {"hooks": [{"type": "command", "command": command, "timeout": 5, "async": True}]}
             if matcher:
@@ -362,7 +362,8 @@ class Claude(Provider):
     def session_id(self, env: dict[str, str]) -> str | None:
         return env.get("CLAUDE_CODE_SESSION_ID") or None
 
-    def headless_command(self, exe: str, session_id: str, system_prompt: str, meta: dict) -> list[str]:
+    def headless_command(self, exe: str, session_id: str | None, system_prompt: str, prompt: str,
+                         meta: dict) -> tuple[list[str], str]:
         from ..routines import split_list
         cmd = [exe, "-p", "--output-format", "stream-json", "--verbose", "--session-id", session_id,
                "--append-system-prompt", system_prompt]
@@ -374,7 +375,7 @@ class Claude(Provider):
             tools = split_list(meta.get(key, ""))
             if tools:
                 cmd += [flag, ",".join(tools)]
-        return cmd
+        return cmd, prompt
 
     def headless_result(self, line: str) -> HeadlessResult | None:
         try:

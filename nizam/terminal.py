@@ -248,12 +248,12 @@ def open_session(s: dict, launcher: str = "Terminal", paste_only: bool = False) 
 
 def start(cwd: str, prompt: str = "", permission_mode: str = "acceptEdits",
           worktree: bool = False, paste_only: bool = False, launcher: str = "Terminal",
-          provider: str | None = None) -> str:
-    """Start a new session in a new Terminal window. The session id is
-    minted here and handed to the CLI, so the caller knows which
+          provider: str | None = None) -> str | None:
+    """Start a new session in a new Terminal window. Where the CLI takes
+    one, the session id is minted here, so the caller knows which
     transcript belongs to this launch before it even appears."""
-    sid = str(uuid.uuid4())
     p = providers.get(provider)
+    sid = str(uuid.uuid4()) if p.takes_session_id else None
     cmd = p.start_command(sid, prompt, permission_mode)
     if worktree:
         root = git_root(cwd)

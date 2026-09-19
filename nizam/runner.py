@@ -164,9 +164,10 @@ def _wait_for_network(limit: float = 90) -> None:
 
 
 def _attempt(r: R.Routine, p: Provider, exe: str, env: dict, log: Path) -> dict:
-    sid = str(uuid.uuid4())
-    cmd = p.headless_command(exe, sid, HEADLESS.format(name=r.name), r.meta)
-    prompt = f"Current date/time: {datetime.now().astimezone():%Y-%m-%d %H:%M %Z (%A)}\n\n{r.prompt}\n"
+    sid = str(uuid.uuid4()) if p.takes_session_id else None
+    cmd, prompt = p.headless_command(
+        exe, sid, HEADLESS.format(name=r.name),
+        f"Current date/time: {datetime.now().astimezone():%Y-%m-%d %H:%M %Z (%A)}\n\n{r.prompt}\n", r.meta)
 
     started = time.time()
     proc = subprocess.Popen(cmd, cwd=str(r.cwd), env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -176,6 +177,8 @@ def _attempt(r: R.Routine, p: Provider, exe: str, env: dict, log: Path) -> dict:
     tail: list[str] = []
 
     def on_line(line: str) -> None:
+        nonlocal sid
+        sid = sid or p.headless_session_id(line)
         res = p.headless_result(line)
         if res:
             results.append(res)
@@ -270,7 +273,8 @@ def run(path: str, scheduled: bool = False) -> int:
                 res = _script(r, env, log)
                 break
             res = _attempt(r, p, exe or "", env, log)
-            sessions.append(res.pop("session"))
+            if ran := res.pop("session"):
+                sessions.append(ran)
             R.record({**base, "status": "running", "sessions": sessions})
             if res["status"] != "errored" or res["duration"] > QUICK_FAILURE or attempt == 2:
                 break
