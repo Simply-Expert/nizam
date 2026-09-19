@@ -39,6 +39,9 @@ Nizam is the layer above the session:
   fails, times out, or stops to ask a question nobody will answer shows up under *Needs you*.
 - **Handoffs between agents, with you in the middle.** One agent can leave a request for another;
   nothing is delivered until you read it and start the session.
+- **No file formats to learn: your agents already know them.** Nizam installs a Claude Code skill, so
+  inside any session you say "remind us to chase the invoice on Friday" or "make this a routine, every
+  weekday at 9" and the agent writes the right file in the right place.
 
 It changes nothing about Claude Code itself. Nizam reads what Claude already writes to disk plus a few
 hooks, keeps its own state in plain files, serves only on `127.0.0.1`, and `nizam uninstall` takes it
@@ -62,6 +65,22 @@ bin/nizam install      # hooks + venv
 bin/nizam app          # menu bar + floating badge + local server
 bin/nizam login on     # start at login
 ```
+
+## First five minutes
+
+1. Install, then open a terminal in any project and run `claude`. The folder appears on the board as
+   an agent within a few seconds, and the session moves between *Working* and *Your turn* as you talk.
+2. Give Claude something that needs a permission. The menu bar count turns red and a notification
+   fires; **Jump to** on the board takes you to that tab.
+3. In the session, say *"create an area for email"*. The agent makes `email/` with its
+   `INSTRUCTIONS.md` and journal, and the board shows the area under the agent.
+4. Say *"remind us to review the backlog on Monday"*. A follow-up appears under the agent, and on
+   Monday it turns amber with a **Start session** button.
+5. Say *"make this a routine, every weekday at 9"* after a task you want repeated. The agent writes
+   `routines/<name>.md`, runs it once to check it, and syncs the schedule; the board shows its next
+   run and last result.
+
+Steps 3 to 5 work because of the `/nizam` skill, below. You never write these files by hand.
 
 ## The model
 
@@ -113,8 +132,11 @@ sessions and are not shown.
 
 ## The `nizam` skill
 
-`nizam install` also copies a Claude Code skill to `~/.claude/skills/nizam`. Inside any agent's
-session it manages areas:
+`nizam install` also copies a Claude Code skill to `~/.claude/skills/nizam`, so every agent knows
+Nizam's conventions without being told: where an area's instructions and journal go, how a follow-up
+is written, what a routine's header takes, who it may send requests to. Claude loads it when you ask
+in plain words ("add a follow-up", "why did the digest routine fail", "any requests?", "hand this to
+finance") or when you type the command:
 
 ```
 /nizam area list
@@ -125,6 +147,10 @@ session it manages areas:
 /nizam followup tag                 # add [area] tags to untagged items
 /nizam followup list
 /nizam followup done banner
+/nizam routine new weekly-digest    # routines/weekly-digest.md + its schedule
+/nizam routine migrate nightly-scan # from a hand-made launchd job or cron line
+/nizam routine list
+/nizam request list                 # what other agents left for this one
 ```
 
 ## Requests
