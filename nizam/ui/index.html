@@ -33,6 +33,7 @@ button:hover { background: var(--accent-bg); border-color: var(--accent); }
 button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 button.primary:hover { filter: brightness(1.08); }
 button.quiet { border-color: transparent; color: var(--muted); }
+button:disabled { opacity: .45; cursor: default; pointer-events: none; }
 select, input, textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; width: 100%; }
 textarea { min-height: 84px; resize: vertical; }
 .pane { min-width: 0; overflow-y: auto; }
@@ -99,6 +100,11 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .dot.fu { color: var(--muted); font-size: 9px; } .dot.fu.overdue { color: var(--needs); } .dot.fu.today { color: var(--working); }
 .ago.due.overdue { color: var(--needs); font-weight: 600; } .ago.due.today { color: var(--working); font-weight: 600; }
 .lsec.fu { color: var(--due); }
+.dot.rt { color: var(--muted); } .dot.rt.completed { color: var(--inbox); } .dot.rt.running { color: var(--working); }
+.dot.rt.incomplete, .dot.rt.errored, .dot.rt.timed_out { color: var(--needs); }
+.item.rt.off { opacity: .6; }
+.tag.rt.completed { background: var(--inbox-bg); color: var(--inbox); } .tag.rt.running { background: var(--working-bg); color: var(--working); }
+.tag.rt.incomplete, .tag.rt.errored, .tag.rt.timed_out, .tag.warn { background: var(--needs-bg); color: var(--needs); }
 .tag.due.overdue { background: var(--needs-bg); color: var(--needs); } .tag.due.today { background: var(--working-bg); color: var(--working); }
 .empty { color: var(--muted); padding: 40px 12px; text-align: center; }
 .onboard { padding: 40px 24px; max-width: 460px; margin: 0 auto; }
@@ -236,6 +242,8 @@ function touchAgos() {
 function counts(list) { const c = {needs:0, working:0, inbox:0, closed:0, done:0}; for (const s of list) c[s.bucket]++; return c; }
 function badges(c, late) { return `<span class="cnt">${late?`<b class="f" title="Follow-ups overdue or due today">◆${late}</b>`:''}${c.needs?`<b class="n">${c.needs}</b>`:''}${c.working?`<b class="w">${c.working}</b>`:''}${c.inbox?`<b class="i">${c.inbox}</b>`:''}</span>`; }
 function lateCount(root) { return (DATA.followups || []).filter(f => (!root || f.agent === root) && f.due !== 'upcoming').length; }
+function failingCount(root) { return (DATA.routines || []).filter(r => (!root || r.agent === root) && r.failing).length; }
+function countsFor(list, root) { const c = counts(list); c.needs += failingCount(root); return c; }
 function byAgent(root) { return DATA.sessions.filter(s => s.agent === root); }
 function agentOf(root) { return DATA.agents.find(a => a.root === root); }
 function lastPara(s) { const p = (s || '').split(/\n\s*\n/).map(x => x.trim()).filter(Boolean); return p[p.length - 1] || ''; }
@@ -268,13 +276,13 @@ function render() {
 function renderSide() {
   const all = visible(DATA.sessions);
   let h = `<div class="brand">Nizam <span class="ar">نظام</span><span class="sp"></span><button class="primary" id="newBtn" title="New session (n)">＋</button></div>`;
-  h += `<div class="row ${!SEL.agent?'on':''}" data-a=""><span class="name">All agents</span>${badges(counts(all), lateCount(null))}</div>`;
+  h += `<div class="row ${!SEL.agent?'on':''}" data-a=""><span class="name">All agents</span>${badges(countsFor(all, null), lateCount(null))}</div>`;
   h += `<div class="sec">Agents</div>`;
   const agents = sortedAgents();
   for (const a of agents) {
     const list = visible(byAgent(a.root));
-    if (!list.length && !showDone && !a.pinned && !lateCount(a.root)) continue;
-    h += `<div class="row agent ${SEL.agent===a.root?'on':''}" draggable="true" data-root="${esc(a.root)}" data-a="${esc(a.root)}" title="${esc(a.display)}\nDrag to reorder · right-click to rename or pin">${a.pinned?'<span class="pin">📌</span>':''}<span class="name">${esc(a.display_name)}</span>${badges(counts(list), lateCount(a.root))}</div>`;
+    if (!list.length && !showDone && !a.pinned && !lateCount(a.root) && !failingCount(a.root)) continue;
+    h += `<div class="row agent ${SEL.agent===a.root?'on':''}" draggable="true" data-root="${esc(a.root)}" data-a="${esc(a.root)}" title="${esc(a.display)}\nDrag to reorder · right-click to rename or pin">${a.pinned?'<span class="pin">📌</span>':''}<span class="name">${esc(a.display_name)}</span>${badges(countsFor(list, a.root), lateCount(a.root))}</div>`;
   }
   h += `<div class="foot"><label class="chk"><input type="checkbox" id="showDone" ${showDone?'checked':''}> Show done</label></div>`;
   const side = $('#side'); side.innerHTML = h;
@@ -355,6 +363,23 @@ function followupRow(f, showAgent) {
   const where = (showAgent && a ? esc(a.display_name) : '') + (f.area ? (showAgent ? ' › ' : '') + esc(f.area) : '');
   return `<div class="item fu ${f.due} ${CUR===f.id?'on':''}" data-id="${f.id}"><span class="dot fu ${f.due}">◆</span><span class="t">${esc(f.title)}</span><span class="ago due ${f.due}">${dueLabel(f)}</span>${where?`<span class="where">${where}</span>`:''}<span class="p">${esc((f.body || '').split('\n')[0])}</span></div>`;
 }
+const RT_STATUS = {completed: 'Completed', incomplete: 'Incomplete', errored: 'Errored', timed_out: 'Timed out', running: 'Running', never: 'Never ran'};
+const RT_DOT = {completed: '✓', incomplete: '!', errored: '!', timed_out: '!', running: '◐', never: '○'};
+function routinesFor(agentRoot, areaRel) {
+  let r = DATA.routines || [];
+  if (agentRoot) r = r.filter(x => x.agent === agentRoot);
+  if (agentRoot && areaRel) r = r.filter(x => x.area && (x.area === areaRel || x.area.startsWith(areaRel + '/')));
+  return r;
+}
+function routineRow(r, showAgent) {
+  const a = agentOf(r.agent);
+  const where = (showAgent && a ? esc(a.display_name) : '') + (r.area ? (showAgent ? ' › ' : '') + esc(r.area) : '');
+  const off = ['disabled', 'manual', 'invalid'].includes(r.state);
+  const right = r.status === 'running' ? 'running' : r.next ? 'next ' + esc(r.next) : esc(r.state);
+  const line = r.error ? r.error : r.last ? `${RT_STATUS[r.status]} ${r.last.when} · ${(r.last.summary || '').split('\n')[0]}` : r.schedule;
+  const shown = r.failing ? r.status : (r.status === 'running' || r.status === 'completed' ? r.status : 'never');
+  return `<div class="item rt ${off?'off':''} ${CUR===r.id?'on':''}" data-id="${r.id}"><span class="dot rt ${shown}">${RT_DOT[shown]}</span><span class="t">${esc(r.name)}</span><span class="ago">${right}</span>${where?`<span class="where">${where}</span>`:''}<span class="p ${r.failing||r.error?'why':''}">${esc(line)}</span></div>`;
+}
 function sessionRow(s) {
   const where = SEL.agent ? (s.area ? esc(s.area) : '') : esc(s.agent_name) + (s.area ? ' › ' + esc(s.area) : '');
   const p = s.bucket === 'needs' && s.detail ? `<span class="p why">${esc(s.detail)}</span>` : `<span class="p">${esc(lastPara(s.preview))}</span>`;
@@ -383,13 +408,21 @@ function renderList() {
     fus.forEach(f => NAV.push(f.id));
     return section('fu', SEL.agent ? 'Follow-ups' : 'Due', fus.length + (late && SEL.agent ? ` · ${late} late` : '')) + fus.map(f => followupRow(f, !SEL.agent)).join('');
   };
-  if (!SEL.agent) h += fuHtml();
+  const allRt = routinesFor(SEL.agent, SEL.area);
+  const rts = SEL.agent ? allRt : allRt.filter(r => r.failing);
+  const rtHtml = () => {
+    if (!rts.length) return '';
+    const bad = rts.filter(r => r.failing).length;
+    rts.forEach(r => NAV.push(r.id));
+    return section(bad ? 'needs' : 'fu', SEL.agent ? 'Routines' : 'Routines failing', rts.length + (bad && SEL.agent ? ` · ${bad} failing` : '')) + rts.map(r => routineRow(r, !SEL.agent)).join('');
+  };
+  if (!SEL.agent) h += rtHtml() + fuHtml();
   let last = null;
   for (const s of open) {
     if (s.bucket !== last) { h += section(s.bucket, SECTION[s.bucket], open.filter(x => x.bucket === s.bucket).length); last = s.bucket; }
     NAV.push(s.id); h += sessionRow(s);
   }
-  if (SEL.agent) h += fuHtml();
+  if (SEL.agent) h += fuHtml() + rtHtml();
   if (done.length) { h += section('done', SECTION.done, done.length); done.forEach(s => { NAV.push(s.id); h += sessionRow(s); }); }
   if (!NAV.length) h += `<div class="empty">${SEL.agent ? 'Nothing waiting from this agent' : 'Nothing waiting'}</div>`;
   const el = $('#list'); el.innerHTML = h;
@@ -412,7 +445,7 @@ function renderList() {
   });
   if ((!CUR || !NAV.includes(CUR)) && NAV.length && window.innerWidth > 760) { CUR = NAV[0]; renderListSelection(); }
 }
-function openSession(id) { if (id && !id.startsWith('f:')) api(`/api/sessions/${id}/open`, {}); }
+function openSession(id) { if (id && !/^[fr]:/.test(id)) api(`/api/sessions/${id}/open`, {}); }
 function renderListSelection() { document.querySelectorAll('.item').forEach(i => i.classList.toggle('on', i.dataset.id === CUR)); }
 
 /* ---------- detail ---------- */
@@ -434,8 +467,47 @@ function renderFollowup(d, f) {
   });
   $('#back').addEventListener('click', () => { detailOpen = false; render(); });
 }
+function renderRoutine(d, r) {
+  const a = agentOf(r.agent), L = r.last;
+  const needsSync = r.state === 'not installed' || r.state === 'out of date';
+  const mins = L && L.duration != null ? (L.duration < 90 ? `${L.duration}s` : `${Math.round(L.duration / 60)} min`) : '';
+  d.innerHTML = `
+    <button class="back quiet" id="back">‹ Back</button>
+    <h1>${esc(r.name)}</h1>
+    <div class="meta"><b>${esc(a ? a.display_name : '')}</b>${r.area?` › ${esc(r.area)}`:''} · ${r.kind === 'script' ? 'script routine' : 'routine'} · ${esc(r.schedule)} <span class="tag ${needsSync||r.state==='invalid'?'warn':''}">${esc(r.state)}</span>${r.next?` · next ${esc(r.next)}`:''}</div>
+    <div class="state ${r.failing?'needs':r.status==='running'?'working':r.status==='completed'?'inbox':'closed'}"><span class="dot rt ${r.status}">${RT_DOT[r.status]}</span>${RT_STATUS[r.status]}${L?` · ${esc(L.when)}${mins?` · ${mins}`:''}${L.trigger==='manual'?' · run by hand':''}`:''}</div>
+    ${r.error ? `<div class="why">${esc(r.error)}</div>` : ''}
+    ${needsSync ? `<div class="why">launchd does not have this schedule yet. Sync installs it.</div>` : ''}
+    <div class="actions">
+      ${needsSync ? `<button class="primary" data-rt="sync">Sync schedule</button>` : ''}
+      <button class="${needsSync?'':'primary'}" data-rt="run" ${r.status==='running'||r.error?'disabled':''}>Run now</button>
+      ${L && L.session_id ? `<button data-rt="open" title="Resume the last run as a normal session, with its full context">Open last run</button>` : ''}
+      ${r.kind === 'script' && L && ['errored', 'timed_out'].includes(r.status) ? `<button id="rtFix" title="Open a session in this agent with the failure as the first prompt">Start session to fix</button>` : ''}
+      ${r.failing ? `<button data-rt="ack" title="Stop counting this failure; the next failed run counts again">Dismiss</button>` : ''}
+    </div>
+    ${L ? `<div class="msg">${esc(L.summary || '(no output)')}</div>` : `<div class="msg muted">No run recorded yet.</div>`}
+    ${r.kind === 'script' ? `<div class="prompt" style="margin-top:12px">$ ${esc(r.command)}${r.about ? '\n' + esc(r.about) : ''}</div>` : ''}
+    <div class="path">${esc(r.file)} · the agent edits this file${L && L.log ? `<br>${esc(L.log)}` : ''}</div>`;
+  if ($('#rtFix')) $('#rtFix').addEventListener('click', async () => {
+    const last = DATA.prefs.last_start || {};
+    const prompt = `The script routine "${r.name}" (${r.file}) ${r.status === 'timed_out' ? 'timed out' : 'failed'} on its last run (${L.when}).\n\nCommand: ${r.command}\nFull log: ${L.log}\n\nEnd of its output:\n${(L.summary || '').slice(-1200)}\n\nFind the cause and fix it, then run \`nizam run ${r.file}\` to confirm it completes.`;
+    const res = await api('/api/start', {cwd: r.cwd, prompt, permission_mode: last.permission_mode || 'acceptEdits', title: `Fix routine: ${r.name}`});
+    if (res.error) { toast(res.error); return; }
+    toast('Session started', true); setTimeout(() => refresh(true), 1500);
+  });
+  d.querySelectorAll('[data-rt]').forEach(el => el.addEventListener('click', async () => {
+    const act = el.dataset.rt, res = await api(`/api/routines/${act}`, {id: r.id});
+    if (res.error) { toast(res.error); return; }
+    if (act === 'sync') toast((res.messages || []).join(' · ') || 'Nothing to sync', res.ok);
+    if (act === 'run') toast(`${r.name} started`, true);
+    setTimeout(() => refresh(true), act === 'run' ? 1500 : 0);
+  }));
+  $('#back').addEventListener('click', () => { detailOpen = false; render(); });
+}
 function renderDetail() {
   const d = $('#detail');
+  const rt = (DATA.routines || []).find(x => x.id === CUR);
+  if (rt) { d.classList.toggle('open', detailOpen); return renderRoutine(d, rt); }
   const f = (DATA.followups || []).find(x => x.id === CUR);
   if (f) { d.classList.toggle('open', detailOpen); return renderFollowup(d, f); }
   const s = DATA.sessions.find(x => x.id === CUR);

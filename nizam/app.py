@@ -281,6 +281,12 @@ class AppDelegate(NSObject):
                 counts[s["bucket"]] += 1
             if s["bucket"] == "needs":
                 needs_now[s["id"]] = s
+        for r in snap.get("routines", []):
+            if r["failing"]:
+                counts["needs"] += 1
+                needs_now[f"{r['id']}:{r['last']['run_id']}"] = {
+                    "agent_name": next((a["display_name"] for a in snap["agents"] if a["root"] == r["agent"]), ""),
+                    "label": "Routine " + r["status"].replace("_", " "), "title": r["name"]}
         self._set_title(counts)
         self.badge_view.counts = counts
         self.badge.setContentSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
@@ -293,7 +299,7 @@ class AppDelegate(NSObject):
                 s = needs_now[next(iter(new_ids))]
                 _notify(f"{s['agent_name']} needs you", f"{s['label']} · {s['title']}")
             else:
-                _notify("Nizam", f"{len(new_ids)} sessions need you")
+                _notify("Nizam", f"{len(new_ids)} need you")
         self.seen_needs = set(needs_now)
         self.seeded = True
 

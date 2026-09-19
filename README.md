@@ -41,6 +41,7 @@ bin/nizam login on     # start at login
 | **Area** | A standing topic inside an agent, e.g. `channels/email`, `campaigns/sept-2026`. | Any sub-folder of the agent holding `INSTRUCTIONS.md`. Areas nest. Folders without the marker (`data`, `scripts`, `shared`) are not areas. |
 | **Session** | One Claude Code conversation. | The transcript in `~/.claude/projects`. |
 | **Follow-up** | A dated one-off the agent owes, not yet a session. | `## YYYY-MM-DD (Day) — [area] Title` sections in `FOLLOWUPS.md` at the agent root, where an optional `[area]` tag files an item under that area, or in a self-contained area's own `FOLLOWUPS.md`. The board merges them. Read-only. |
+| **Routine** | Recurring work an agent does unattended, on a schedule: a headless Claude run, or a plain script. | `routines/<name>.md` at the agent root or inside an area: a `schedule:` header and the prompt. Read-only. |
 
 Sessions fall into five states:
 
@@ -68,6 +69,10 @@ last message was wrong too often; you are the only one who knows a task is over.
 - **Follow-ups** appear under an agent's sessions, overdue in red and today in amber; *All agents*
   shows only what is due. **Start session** opens one with the follow-up as the first prompt. Nizam
   never edits the file: the agent records the outcome and deletes its own line.
+- **Routines** appear under an agent's follow-ups with their next run and last result. A run that
+  errored, timed out, or ended without confirming its work counts under *Needs you*, notifies, and
+  shows in *All agents* until it succeeds or you dismiss it. **Run now** starts one by hand,
+  **Open last run** resumes that run as a normal session, **Sync schedule** installs a new schedule.
 - **Clear** marks every *Closed* session in the current view as done; hovering a Closed row shows a Done button.
 - Keys: `j`/`k` move, `Enter` jumps, `d` marks done, `n` starts a session, `Esc` closes.
 - Notifications fire when a session newly needs you.
@@ -94,6 +99,55 @@ session it manages areas:
 
 A folder becomes visible on the board the moment it gets an `INSTRUCTIONS.md`.
 
+## Routines
+
+A routine replaces the usual trio of prompt file, shell wrapper and hand-written LaunchAgent with one file:
+
+```markdown
+---
+schedule: sat-thu 09:30, 16:00, 22:00; fri 09:30
+timeout: 30m
+model: sonnet
+allowed_tools: mcp__slack__*, Read, Write, Edit
+---
+You are the daily scan. 1. Read tasks/backlog.md …
+```
+
+`nizam routines sync` turns each `schedule:` into a LaunchAgent, so launchd is the clock: routines fire
+whether or not the Nizam app is running, and a slot missed while the Mac slept runs once on wake.
+`nizam run` is the single wrapper they all share:
+
+- one run per agent at a time; a second routine queues instead of killing the first
+- the login shell's `PATH`, so `node`-based MCP servers work under launchd
+- `env_file: .env.local` in the header, for what a wrapper used to `source`
+- a wall-clock timeout that kills the whole process group, and `caffeinate` so idle sleep does not cut a run short
+- one retry when a run fails within 90 seconds, which is what a run fired on wake before the network is up looks like
+- every run must end with `OUTCOME: COMPLETE`. A headless run that stops to ask "shall I proceed?"
+  exits 0 having done nothing; here it is reported as *incomplete*
+- the full stream of each run in `~/.nizam/routines/logs`, kept 30 days
+
+**Script routines.** A `command:` line in the header runs a script instead of Claude, for collectors and
+checks that need no judgement. Same schedule, PATH, timeout, log and board; success is exit code 0.
+
+```markdown
+---
+schedule: monthly 6 09:07
+command: node scripts/collect-monthly-snapshot.mjs
+---
+Collects last month's numbers into data/snapshots/. Feeds the monthly report.
+```
+
+When one fails, **Start session to fix** opens the agent with the command, the end of the output and
+the log path as the first prompt. It is meant for scripts an agent owns, not as a general cron.
+
+Already have routines as hand-made LaunchAgents with shell wrappers? Or as cron lines? Ask the agent to
+`/nizam routine migrate <name>`: it translates the plist or crontab line and the wrapper, asks before the (real) test run,
+and retires the old job in the same step it installs the new one.
+
+Schedules: `manual`, `daily 09:30, 16:00`, `mon, wed 08:00`, `sat-thu 09:30` (ranges wrap),
+`monthly 1 09:00`, `hourly :15`, joined with `;`. Local time. A slot missed while the Mac was powered
+off or logged out is not made up.
+
 ## Commands
 
 ```
@@ -105,6 +159,9 @@ nizam serve [--open]  server only, for the browser
 nizam open            open the board in the browser
 nizam install         install hooks + build the venv
 nizam uninstall       remove hooks, skill and start-at-login
+nizam routines list   this agent's routines: state, next run, last result
+nizam routines sync   install this agent's schedules into launchd; remove those of deleted routines
+nizam run <file>      run one routine now, headless
 nizam login on|off    start at login (LaunchAgent)
 nizam doctor          check wiring
 ```
@@ -115,6 +172,8 @@ nizam doctor          check wiring
 |---|---|
 | `~/.nizam/state.json` | Your decisions: done flags, session titles, agent display names, pins, order, prefs |
 | `~/.nizam/events.jsonl` | Hook events, including short snippets of prompts and replies. Treat as private. |
+| `~/.nizam/routines` | Routine run records (`runs.jsonl`, with the tail of each run's final reply), per-run logs, locks. Treat as private. |
+| `~/Library/LaunchAgents/co.nizam.routine.*` | One per scheduled routine; written by `nizam routines sync`, removed by `nizam uninstall` |
 | `~/.nizam/venv` | PyObjC for the Mac shell |
 | `~/.nizam/src` | The code, when installed with the one-liner |
 | `~/.claude/settings.json` | Gets eight `nizam/hook.py` hook entries; `nizam uninstall` removes them |

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import subprocess
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -158,6 +160,33 @@ class Handler(BaseHTTPRequestHandler):
             b.invalidate()
             return self._json({"ok": True})
 
+        if parts[:2] == ["api", "routines"] and len(parts) == 3:
+            from . import routines
+            r = next((x for x in b.snapshot()["routines"] if x["id"] == body.get("id")), None)
+            if not r:
+                return self._json({"error": "unknown routine"}, 404)
+            if parts[2] == "run":
+                if r["status"] == "running":
+                    return self._json({"error": "This routine is already running"}, 409)
+                routines.ROUTINES_DIR.mkdir(parents=True, exist_ok=True)
+                with open(routines.RUNNER_LOG, "ab") as log:
+                    subprocess.Popen([sys.executable, "-m", "nizam", "run", r["file"]], cwd=str(routines.SRC_ROOT),
+                                     env=terminal.clean_env(), stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                                     start_new_session=True)
+            elif parts[2] == "sync":
+                msgs = routines.sync([Path(r["agent"])])
+                b.invalidate()
+                return self._json({"ok": not any(m.startswith("!") for m in msgs), "messages": msgs})
+            elif parts[2] == "ack" and r["last"]:
+                b.persist.ack_routine(r["id"][2:], r["last"]["run_id"])
+            elif parts[2] == "open" and r["last"] and r["last"]["session_id"]:
+                ok = terminal.resume(r["last"]["session_id"], r["cwd"], bool(body.get("paste")), launcher)
+                return self._json({"ok": ok})
+            else:
+                return self._json({"error": "unknown action"}, 400)
+            b.invalidate()
+            return self._json({"ok": True})
+
         if parts == ["api", "prefs"]:
             for k, v in body.items():
                 if k in ("launcher", "show_done", "density", "selected", "theme"):
@@ -178,7 +207,6 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
     ensure_dirs()
     httpd = make_server(Board(), port)
     if open_browser:
-        import subprocess
         threading.Timer(0.5, lambda: subprocess.Popen(["open", f"http://127.0.0.1:{port}/"])).start()
     print(f"nizam: http://127.0.0.1:{port}/", flush=True)
     try:

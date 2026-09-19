@@ -19,6 +19,7 @@ from pathlib import Path
 
 from . import agents as agents_mod
 from . import followups as followups_mod
+from . import routines as routines_mod
 from .claude_sessions import Runtime, Transcript, iter_transcripts, read_runtimes
 from .paths import EVENTS_FILE, STATE_FILE, ensure_dirs
 
@@ -157,6 +158,11 @@ class Persisted:
             self.data["prefs"][key] = value
             self.save()
 
+    def ack_routine(self, routine_id: str, run_id: str) -> None:
+        with self.lock:
+            self.data.setdefault("routine_acks", {})[routine_id] = run_id
+            self.save()
+
     def set_agent(self, root: str, **fields) -> None:
         with self.lock:
             a = self.data.setdefault("agents", {}).setdefault(root, {})
@@ -252,6 +258,7 @@ class Board:
 
         sessions = []
         agents: dict[str, dict] = {}
+        routine_sessions = routines_mod.hidden_sessions()
         for t in transcripts:
             sid = t.session_id
             rt = runtimes.get(sid)
@@ -263,6 +270,10 @@ class Board:
                 continue          # stray sessions launched from /, ~ or a temp dir aren't an agent
             agent, area = agents_mod.resolve(cwd)
             live = bool(rt and rt.alive)
+            if sid in routine_sessions and (not live or routines_mod.is_running(routine_sessions[sid])):
+                # A routine's headless run shows as the routine; it becomes a session once you resume it.
+                agents.setdefault(str(agent.root), agent.to_dict())
+                continue
             last_activity = max(t.mtime, t.last_ts or 0, h.last_ts if h else 0,
                                 rt.updated_at if rt else 0)
 
@@ -324,8 +335,12 @@ class Board:
             if o.get("pinned") and root not in agents and Path(root).is_dir():
                 agents[root] = agents_mod.load_agent(Path(root)).to_dict()
         followups: list[dict] = []
+        routines: list[dict] = []
+        acks = self.persist.data.get("routine_acks", {})
         for root in agents:
-            followups.extend(followups_mod.for_agent(agents_mod.load_agent(Path(root))))
+            loaded = agents_mod.load_agent(Path(root))
+            followups.extend(followups_mod.for_agent(loaded))
+            routines.extend(routines_mod.board_rows(loaded, acks))
         for a in agents.values():
             o = overrides.get(a["root"], {})
             a["display_name"] = o.get("name") or a["name"]
@@ -333,7 +348,7 @@ class Board:
         for s in sessions:
             s["agent_name"] = agents[s["agent"]]["display_name"]
         return {"generated_at": now, "agents": sorted(agents.values(), key=lambda a: a["display_name"].lower()),
-                "sessions": sessions, "followups": followups, "prefs": self.persist.data["prefs"],
+                "sessions": sessions, "followups": followups, "routines": routines, "prefs": self.persist.data["prefs"],
                 "agent_order": self.persist.data.get("agent_order", [])}
 
     @staticmethod

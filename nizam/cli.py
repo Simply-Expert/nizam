@@ -147,6 +147,10 @@ def uninstall_hooks() -> None:
     if SKILL_DST.exists():
         SKILL_DST.unlink()
         print("✓ /nizam skill removed")
+    from .routines import remove_all
+    n = remove_all()
+    if n:
+        print(f"✓ {n} routine schedule(s) removed from launchd; the routine files are untouched")
 
 
 def doctor() -> int:
@@ -159,7 +163,31 @@ def doctor() -> int:
     print(f"events file: {EVENTS_FILE} ({EVENTS_FILE.stat().st_size if EVENTS_FILE.exists() else 0} bytes)")
     from .paths import CLAUDE_SESSIONS
     print(f"runtime files: {len(list(CLAUDE_SESSIONS.glob('*.json'))) if CLAUDE_SESSIONS.is_dir() else 0}")
+    from . import routines
+    issues = routines.audit()
+    print(f"routine schedules: {len(routines.installed())} installed, {len(issues)} out of step")
+    for i in issues:
+        print("  !", i)
+    ok &= not issues
     return 0 if ok else 1
+
+
+def routines_cmd(action: str, where: str) -> int:
+    from . import routines
+    from .agents import find_agent_root, load_agent
+    root = find_agent_root(Path(where).resolve())
+    if action == "sync":
+        msgs = routines.sync([root])
+        print("\n".join(msgs) if msgs else f"no routines under {root}")
+        return 1 if any(m.startswith("!") for m in msgs) else 0
+    rows = routines.board_rows(load_agent(root), {})
+    if not rows:
+        print(f"no routines under {root} (a routine is routines/<name>.md)")
+    for r in rows:
+        last = r["last"]
+        print(f"{r['name']:<24} {r['state']:<14} {r['schedule']:<32} "
+              f"next {r['next'] or '-':<16} last {last['status'] + ' ' + last['when'] if last else '-'}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -178,6 +206,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--detach", action="store_true", help="run in the background, surviving the terminal")
     ap.add_argument("--restart", action="store_true",
                     help="quit the running menu-bar app, then start it again detached")
+    rn = sub.add_parser("run", help="run one routine now, headless")
+    rn.add_argument("file", help="path to routines/<name>.md")
+    rn.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)
+    rt = sub.add_parser("routines", help="list this agent's routines, or sync their schedules into launchd")
+    rt.add_argument("action", choices=("list", "sync"))
+    rt.add_argument("path", nargs="?", default=".", help="a folder inside the agent (default: here)")
     lg = sub.add_parser("login", help="start at login: on | off | status")
     lg.add_argument("state", choices=("on", "off", "status"))
     a = p.parse_args(argv)
@@ -192,6 +226,11 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
         ensure_dirs()
         return run_app(a.port, detach=a.detach or a.restart)
+    if a.cmd == "run":
+        from .runner import run
+        return run(a.file, scheduled=a.scheduled)
+    if a.cmd == "routines":
+        return routines_cmd(a.action, a.path)
     if a.cmd == "login":
         from .launch import login_enabled, set_login
         if a.state != "status":
