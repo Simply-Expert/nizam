@@ -16,6 +16,34 @@ menu bar and a floating badge, and opens the same board in a popover or a browse
 
 ![The Nizam board: agents on the left, their sessions, follow-ups, routines and requests sorted by who needs you, and the selected session on the right](docs/board.png)
 
+## Why
+
+Claude Code is built around one conversation in one terminal tab. That holds until you use it the way
+it invites you to: five tabs across three projects, one blocked on a permission prompt you never saw,
+one that finished an hour ago, one you forgot you started. Claude Code tells you none of this. You find
+out by cycling through tabs.
+
+Nizam is the layer above the session:
+
+- **See who is waiting on you, across every tab.** One board sorts all your sessions into *Needs you*,
+  *Working*, *Your turn* and *Done*, with live counts in the menu bar.
+- **Nothing sits blocked in silence.** A permission prompt, a question, a plan to approve or a stalled
+  run raises a notification the moment it happens, not when you next look at that tab.
+- **One click back to the right place.** *Jump to* focuses the exact terminal tab of a live session;
+  *Resume* reopens one that exited.
+- **Work grouped by role, not by tab.** Folders become agents, their standing topics become areas, and
+  each keeps its own instructions and journal, so a session starts with the right context.
+- **A place for what is not a session yet.** Dated follow-ups sit beside an agent's sessions and turn
+  red when they are overdue.
+- **Unattended work that tells you when it breaks.** A routine is one file with a schedule. A run that
+  fails, times out, or stops to ask a question nobody will answer shows up under *Needs you*.
+- **Handoffs between agents, with you in the middle.** One agent can leave a request for another;
+  nothing is delivered until you read it and start the session.
+
+It changes nothing about Claude Code itself. Nizam reads what Claude already writes to disk plus a few
+hooks, keeps its own state in plain files, serves only on `127.0.0.1`, and `nizam uninstall` takes it
+out again.
+
 ## Install
 
 ```bash
