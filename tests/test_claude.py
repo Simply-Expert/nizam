@@ -153,6 +153,30 @@ class Hooks(Case):
         self.assertEqual(self.settings(), {})
 
 
+class Version(unittest.TestCase):
+    def check(self, out):
+        from nizam.providers import claude
+        done = subprocess.CompletedProcess([], 0, stdout=out)
+        with mock.patch.object(claude.shutil, "which", return_value="/bin/claude"), \
+                mock.patch.object(claude.subprocess, "run", return_value=done), \
+                mock.patch.object(claude, "MIN_VERSION", (2, 1, 158)), \
+                mock.patch.object(claude, "TESTED_VERSION", (2, 1, 278)):
+            return claude.Claude()._version_check()
+
+    def test_known_version_is_quiet(self):
+        self.assertEqual(self.check("2.1.200 (Claude Code)\n"), (True, "claude version: 2.1.200"))
+
+    def test_newer_than_tested_warns_without_failing(self):
+        ok, line = self.check("2.2.0 (Claude Code)\n")
+        self.assertTrue(ok)
+        self.assertIn("newer than the last one tested (2.1.278)", line)
+
+    def test_too_old_fails(self):
+        ok, line = self.check("2.1.100 (Claude Code)\n")
+        self.assertFalse(ok)
+        self.assertIn("older than 2.1.158", line)
+
+
 class HookScript(Case):
     def fire(self, payload):
         subprocess.run([sys.executable, str(REPO / "nizam" / "hook.py")], input=json.dumps(payload), text=True,

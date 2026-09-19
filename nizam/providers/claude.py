@@ -14,6 +14,7 @@ import os
 import re
 import shlex
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -30,6 +31,8 @@ DESKTOP_SESSIONS = Path.home() / "Library" / "Application Support" / "Claude" / 
 _DESKTOP_ID = re.compile(r"^local_[A-Za-z0-9-]{1,64}$")
 
 TAIL_BYTES = 256 * 1024
+MIN_VERSION = (2, 1, 158)
+TESTED_VERSION = (2, 1, 278)   # newest Claude Code this was run against
 PENDING_TOOLS = {"ExitPlanMode": "Plan to review", "AskUserQuestion": "Asking you"}
 
 HOOK_EVENTS = {
@@ -318,12 +321,35 @@ class Claude(Provider):
         SKILL_DST.unlink()
         return ["✓ /nizam skill removed"]
 
+    def _version_check(self) -> tuple[bool, str]:
+        exe = shutil.which(self.cli) or next((str(d / self.cli) for d in self.cli_dirs if (d / self.cli).exists()), None)
+        if not exe:
+            return False, "! claude CLI not found on PATH"
+        try:
+            out = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=15,
+                                 stdin=subprocess.DEVNULL).stdout
+        except (OSError, subprocess.SubprocessError):
+            out = ""
+        m = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
+        if not m:
+            return True, "! claude version: could not be read"
+        v = tuple(int(x) for x in m.groups())
+        dotted = ".".join(map(str, v))
+        if v < MIN_VERSION:
+            return False, f"! claude {dotted} is older than {'.'.join(map(str, MIN_VERSION))}; live status will be missing"
+        if v > TESTED_VERSION:
+            # Not a failure: what is read from ~/.claude is undocumented, so a newer release is only a suspect.
+            return True, (f"! claude {dotted} is newer than the last one tested ({'.'.join(map(str, TESTED_VERSION))}); "
+                          "if the board looks wrong, upgrade Nizam")
+        return True, f"claude version: {dotted}"
+
     def doctor(self) -> tuple[bool, list[str]]:
+        version_ok, version_line = self._version_check()
         ours = sum(1 for gs in (_load_settings().get("hooks") or {}).values() for g in gs
                    for h in g.get("hooks", []) if MARK in str(h.get("command", "")))
         runtime_files = len(list(CLAUDE_SESSIONS.glob("*.json"))) if CLAUDE_SESSIONS.is_dir() else 0
-        return ours == len(HOOK_EVENTS), [f"hooks installed: {ours}/{len(HOOK_EVENTS)}",
-                                          f"runtime files: {runtime_files}"]
+        return version_ok and ours == len(HOOK_EVENTS), [version_line, f"hooks installed: {ours}/{len(HOOK_EVENTS)}",
+                                                         f"runtime files: {runtime_files}"]
 
     def signal(self, event: dict) -> Signal:
         name = event.get("hook_event_name")

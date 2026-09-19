@@ -4,12 +4,12 @@
 # Re-run the same line to upgrade. Env overrides:
 #   NIZAM_SRC   where the code lives      (default ~/.nizam/src)
 #   NIZAM_REPO  git URL to clone          (default https://github.com/Simply-Expert/nizam)
-#   NIZAM_REF   branch or tag to check out (default main)
+#   NIZAM_REF   branch or tag to check out (default: the newest v* tag, or main when there is none)
 set -euo pipefail
 
 SRC="${NIZAM_SRC:-$HOME/.nizam/src}"
 REPO="${NIZAM_REPO:-https://github.com/Simply-Expert/nizam}"
-REF="${NIZAM_REF:-main}"
+REF="${NIZAM_REF:-}"
 BOLD=$'\033[1m'; DIM=$'\033[2m'; GREEN=$'\033[32m'; RED=$'\033[31m'; RESET=$'\033[0m'
 step() { printf '%s→%s %s\n' "$BOLD" "$RESET" "$*"; }
 ok()   { printf '  %s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
@@ -25,15 +25,25 @@ for c in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
 done
 [ -n "$PY" ] || fail "Python 3.10+ with venv is required (brew install python)."
 
+if [ -z "$REF" ]; then
+  REF="$(git ls-remote --tags --refs --sort=-v:refname "$REPO" 'v*' 2>/dev/null | head -n1 | sed 's|.*refs/tags/||' || true)"
+  REF="${REF:-main}"
+fi
+
 mkdir -p "$HOME/.nizam"
 if [ -d "$SRC/.git" ]; then
-  step "Updating $SRC"
-  git -C "$SRC" fetch -q origin "$REF" && git -C "$SRC" checkout -q "$REF" && git -C "$SRC" pull -q --ff-only origin "$REF"
+  step "Updating $SRC to $REF"
+  git -C "$SRC" fetch -q --tags origin
+  git -C "$SRC" checkout -q "$REF"
+  # Only a branch moves; a tag is already where it should be.
+  if git -C "$SRC" show-ref -q --verify "refs/remotes/origin/$REF"; then
+    git -C "$SRC" merge -q --ff-only "origin/$REF"
+  fi
 else
-  step "Cloning $REPO → $SRC"
+  step "Cloning $REPO ($REF) → $SRC"
   git clone -q --branch "$REF" "$REPO" "$SRC"
 fi
-ok "code at $SRC"
+ok "code at $SRC ($REF)"
 
 step "Installing Claude Code hooks and the PyObjC venv (one-time, ~1 min)"
 ( cd "$SRC" && "$PY" -m nizam install )

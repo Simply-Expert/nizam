@@ -1,11 +1,13 @@
 # Nizam · نظام
 
-**A manager's view of your Claude Code agents.**
+**Turn the folders you run Claude Code in into standing agents, and see which one needs you.**
 
 Nizam treats every folder you run Claude Code in as an *agent*: a colleague with a role, standing
-topics, and a queue of conversations with you. It shows, at a glance, which agent needs you,
-which is working, and which has finished and is waiting for your reply. It lives in the macOS
-menu bar and a floating badge, and opens the same board in a popover or a browser.
+topics that keep their own instructions and journal, dated follow-ups, work it does on a schedule
+while you are away, and an inbox other agents can leave requests in. All of it is plain files,
+written by the agent itself, so it outlives every session. On top sits a board, in the macOS
+menu bar, a floating badge and the browser, that shows at a glance which agent needs you, which is
+working, and which has finished and is waiting for your reply.
 
 <p>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg" /></a>
@@ -18,19 +20,15 @@ menu bar and a floating badge, and opens the same board in a popover or a browse
 
 ## Why
 
-Claude Code is built around one conversation in one terminal tab. That holds until you use it the way
-it invites you to: five tabs across three projects, one blocked on a permission prompt you never saw,
-one that finished an hour ago, one you forgot you started. Claude Code tells you none of this. You find
-out by cycling through tabs.
+Claude Code is built around one conversation in one terminal tab. Real work is not shaped like that.
+The marketing folder has an email topic with rules you have explained three times, an invoice to chase
+on Friday, a digest that should go out every weekday at 9, and a question for whoever handles legal.
+None of that is a session, so none of it has a home: it lives in your head, in a wrapper script, in a
+hand-written LaunchAgent. And across the five tabs you do have open, one is blocked on a permission
+prompt you never saw and one finished an hour ago. You find out by cycling through tabs.
 
 Nizam is the layer above the session:
 
-- **See who is waiting on you, across every tab.** One board sorts all your sessions into *Needs you*,
-  *Working*, *Your turn* and *Done*, with live counts in the menu bar.
-- **Nothing sits blocked in silence.** A permission prompt, a question, a plan to approve or a stalled
-  run raises a notification the moment it happens, not when you next look at that tab.
-- **One click back to the right place.** *Jump to* focuses the exact terminal tab of a live session;
-  *Resume* reopens one that exited.
 - **Work grouped by role, not by tab.** Folders become agents, their standing topics become areas, and
   each keeps its own instructions and journal, so a session starts with the right context.
 - **A place for what is not a session yet.** Dated follow-ups sit beside an agent's sessions and turn
@@ -42,6 +40,13 @@ Nizam is the layer above the session:
 - **No file formats to learn: your agents already know them.** Nizam installs a Claude Code skill, so
   inside any session you say "remind us to chase the invoice on Friday" or "make this a routine, every
   weekday at 9" and the agent writes the right file in the right place.
+- **See who is waiting on you, across every tab.** One board sorts all your sessions into *Needs you*,
+  *Working*, *Your turn* and *Done*, with live counts in the menu bar. It watches the sessions you
+  start yourself, in your own terminal; there is nothing to launch them from.
+- **Nothing sits blocked in silence.** A permission prompt, a question, a plan to approve or a stalled
+  run raises a notification the moment it happens, not when you next look at that tab.
+- **One click back to the right place.** *Jump to* focuses the exact terminal tab of a live session;
+  *Resume* reopens one that exited.
 
 It changes nothing about Claude Code itself. Nizam reads what Claude already writes to disk plus a few
 hooks, keeps its own state in plain files, serves only on `127.0.0.1`, and `nizam uninstall` takes it
@@ -55,7 +60,8 @@ curl -fsSL https://raw.githubusercontent.com/Simply-Expert/nizam/main/install.sh
 
 That clones the code to `~/.nizam/src`, installs Claude Code hooks into `~/.claude/settings.json`
 (a backup is kept beside it), builds a small PyObjC venv, links a `nizam` command, and starts the
-app. Re-run the same line to upgrade. Nothing phones home and nothing needs an API key.
+app. It installs the newest tagged release; re-run the same line to upgrade, or set `NIZAM_REF=main`
+to follow development. Nothing phones home and nothing needs an API key.
 
 Manual install:
 
