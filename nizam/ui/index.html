@@ -221,8 +221,10 @@ const DOT = {needs: '●', working: '◐', inbox: '●', closed: '○', done: '�
 function load(k, d) { try { const v = localStorage.getItem('nizam.'+k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function save(k, v) { try { localStorage.setItem('nizam.'+k, JSON.stringify(v)); } catch {} }
 
-let DATA = null, SEL = load('sel', {agent: null, area: null}), CUR = null, DRAG = null;
-let showDone = load('showDone', false), _lastKey = null, detailOpen = false;
+let DATA = null, SEL = load('sel', {agent: null, area: null}), CUR = new URLSearchParams(location.search).get('select'), DRAG = null;
+let showDone = load('showDone', false), _lastKey = null, detailOpen = !!CUR;
+if (CUR) SEL = {agent: null, area: null};
+function nizamSelect(id) { SEL = {agent: null, area: null}; CUR = id; detailOpen = true; refresh(true); }
 
 async function api(path, body) {
   const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)} : {});

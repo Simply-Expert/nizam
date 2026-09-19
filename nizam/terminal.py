@@ -226,6 +226,12 @@ def resume(session_id: str, cwd: str, paste_only: bool = False, launcher: str = 
     return True
 
 
+def open_session(s: dict, launcher: str = "Terminal", paste_only: bool = False) -> bool:
+    if s["live"] and s["pid"] and focus(s["pid"], s["cwd"], [s.get("auto_title", ""), s["title"]], s["provider"]):
+        return True
+    return resume(s["id"], s["cwd"], paste_only, launcher, s["provider"])
+
+
 def start(cwd: str, prompt: str = "", permission_mode: str = "acceptEdits",
           worktree: bool = False, paste_only: bool = False, launcher: str = "Terminal",
           provider: str | None = None) -> str:

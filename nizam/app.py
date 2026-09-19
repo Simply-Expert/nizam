@@ -6,10 +6,12 @@ Requires PyObjC (Cocoa + WebKit); `nizam install` builds ~/.nizam/venv.
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
 import threading
+from urllib.parse import quote
 
 from AppKit import (
     NSApp, NSApplication, NSApplicationActivationPolicyAccessory, NSMenu, NSMenuItem,
@@ -18,11 +20,13 @@ from AppKit import (
     NSObject, NSTimer, NSWorkspace, NSURL, NSPanel, NSView, NSBezierPath, NSEvent,
     NSBackingStoreBuffered, NSMakePoint, NSScreen, NSFontWeightSemibold,
     NSImage, NSImageSymbolConfiguration, NSMutableAttributedString, NSTextAttachment,
+    NSTrackingArea, NSMutableParagraphStyle, NSParagraphStyleAttributeName,
 )
-from Foundation import NSURLRequest
+from Foundation import NSURLRequest, NSPointInRect
 from WebKit import WKWebView, WKWebViewConfiguration
 import objc
 
+from . import terminal
 from .paths import NIZAM_DIR, ensure_dirs
 from .launch import PID_FILE, QUIT_FLAG, login_enabled, set_login
 from .server import make_server
@@ -39,7 +43,14 @@ NSWindowStyleMaskNonactivatingPanel = 1 << 7
 NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0
 NSWindowCollectionBehaviorStationary = 1 << 4
 NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8
+NSTrackingMouseEnteredAndExited = 1 << 0
+NSTrackingMouseMoved = 1 << 1
+NSTrackingActiveAlways = 1 << 7
+NSTrackingInVisibleRect = 1 << 9
+NSLineBreakByTruncatingTail = 4
 BADGE_H = 28
+LIST_W, LIST_ROW_H, LIST_HEAD_H, LIST_PAD, LIST_MAX = 300, 38, 26, 6, 10
+HOVER_LINGER_SECS = 0.3
 
 
 # bucket -> (SF Symbol, fallback glyph, colour, tooltip wording)
@@ -113,15 +124,31 @@ class BoardVC(NSViewController):
         self.reload()
 
     @objc.python_method
-    def reload(self):
-        url = NSURL.URLWithString_(f"http://127.0.0.1:{self.port}/?embed=1")
-        self.web.loadRequest_(NSURLRequest.requestWithURL_(url))
+    def reload(self, select=None):
+        url = f"http://127.0.0.1:{self.port}/?embed=1" + (f"&select={quote(select, safe='')}" if select else "")
+        self.web.loadRequest_(NSURLRequest.requestWithURL_(NSURL.URLWithString_(url)))
+
+    @objc.python_method
+    def select(self, item_id):
+        if self.web.isLoading():
+            self.reload(item_id)
+        else:
+            self.web.evaluateJavaScript_completionHandler_(f"nizamSelect({json.dumps(item_id)})", None)
+
+
+def _track_hover(view):
+    for t in list(view.trackingAreas()):
+        view.removeTrackingArea_(t)
+    view.addTrackingArea_(NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
+        view.bounds(), NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved
+        | NSTrackingActiveAlways | NSTrackingInVisibleRect, view, None))
 
 
 class BadgeView(NSView):
-    """A draggable capsule showing the three counts. Click toggles the popover."""
+    """A draggable capsule showing the counts. Click toggles the popover; hovering a count lists what is behind it."""
     delegate = objc.ivar()
     counts = objc.ivar()
+    _spans = objc.ivar()
     _down = objc.ivar()
     _dragged = objc.ivar()
 
@@ -132,15 +159,36 @@ class BadgeView(NSView):
         self.delegate = delegate
         self.counts = {"needs": 0, "working": 0, "inbox": 0, "due": 0}
         self._dragged = False
+        self._spans = []
         return self
 
     def acceptsFirstMouse_(self, event):
         return True   # otherwise the first click after another app only focuses us
 
+    def updateTrackingAreas(self):
+        objc.super(BadgeView, self).updateTrackingAreas()
+        _track_hover(self)
+
     @objc.python_method
     def segments(self):
         font = NSFont.systemFontOfSize_weight_(12, NSFontWeightSemibold)
         return [_segment(k, self.counts[k], font, True) for k in _shown(self.counts)]
+
+    @objc.python_method
+    def _hover(self, event):
+        x = self.convertPoint_fromView_(event.locationInWindow(), None).x
+        for bucket, x0, x1 in self._spans:
+            if x < x1:
+                return self.delegate.hover(bucket, x0)
+
+    def mouseEntered_(self, event):
+        self._hover(event)
+
+    def mouseMoved_(self, event):
+        self._hover(event)
+
+    def mouseExited_(self, event):
+        self.delegate.hover_left()
 
     @objc.python_method
     def desired_width(self):
@@ -158,12 +206,18 @@ class BadgeView(NSView):
         path.setLineWidth_(1)
         path.stroke()
         x = 8.0
-        for a in self.segments():
+        spans = []
+        for k, a in zip(_shown(self.counts), self.segments()):
             sz = a.size()
             a.drawAtPoint_(NSMakePoint(x, (b.size.height - sz.height) / 2))
+            spans.append((k, x, x + sz.width + 6))
             x += sz.width + 12
+        if spans:
+            spans[-1] = (spans[-1][0], spans[-1][1], b.size.width)
+        self._spans = spans
 
     def mouseDown_(self, event):
+        self.delegate.hide_list()
         self._down = event.locationInWindow()
         self._dragged = False
 
@@ -184,12 +238,102 @@ class BadgeView(NSView):
             self.delegate.badgeClicked_(self)
 
     def rightMouseDown_(self, event):
+        self.delegate.hide_list()
         self.delegate.showMenuAt_(self)
 
 
-def make_badge_panel(view_delegate):
+class HoverListView(NSView):
+    """The rows behind one badge count. Click a row to go to it."""
+    delegate = objc.ivar()
+    bucket = objc.ivar()
+    head = objc.ivar()
+    rows = objc.ivar()
+    hot = objc.ivar()
+
+    def initWithFrame_delegate_(self, frame, delegate):
+        self = objc.super(HoverListView, self).initWithFrame_(frame)
+        if self is None:
+            return None
+        self.delegate = delegate
+        self.rows = []
+        self.hot = -1
+        return self
+
+    def isFlipped(self):
+        return True
+
+    def acceptsFirstMouse_(self, event):
+        return True
+
+    def updateTrackingAreas(self):
+        objc.super(HoverListView, self).updateTrackingAreas()
+        _track_hover(self)
+
+    @objc.python_method
+    def desired_height(self):
+        return LIST_HEAD_H + LIST_ROW_H * len(self.rows) + LIST_PAD
+
+    @objc.python_method
+    def _row_at(self, event):
+        y = self.convertPoint_fromView_(event.locationInWindow(), None).y - LIST_HEAD_H
+        i = int(y // LIST_ROW_H)
+        return i if y >= 0 and i < len(self.rows) else -1
+
+    @objc.python_method
+    def _set_hot(self, i):
+        if i != self.hot:
+            self.hot = i
+            self.setNeedsDisplay_(True)
+
+    def mouseEntered_(self, event):
+        self._set_hot(self._row_at(event))
+
+    def mouseMoved_(self, event):
+        self._set_hot(self._row_at(event))
+
+    def mouseExited_(self, event):
+        self._set_hot(-1)
+        self.delegate.hover_left()
+
+    def mouseUp_(self, event):
+        i = self._row_at(event)
+        if i >= 0:
+            self.delegate.list_picked(self.rows[i])
+
+    def drawRect_(self, rect):
+        if not self.bucket:
+            return
+        b = self.bounds()
+        path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(b, 10, 10)
+        NSColor.windowBackgroundColor().colorWithAlphaComponent_(0.97).setFill()
+        path.fill()
+        NSColor.separatorColor().setStroke()
+        path.setLineWidth_(1)
+        path.stroke()
+        para = NSMutableParagraphStyle.alloc().init()
+        para.setLineBreakMode_(NSLineBreakByTruncatingTail)
+
+        def text(s, x, y, size, weight, color):
+            NSAttributedString.alloc().initWithString_attributes_(s, {
+                NSFontAttributeName: NSFont.systemFontOfSize_weight_(size, weight),
+                NSForegroundColorAttributeName: color,
+                NSParagraphStyleAttributeName: para,
+            }).drawInRect_(NSMakeRect(x, y, b.size.width - x - 12, size + 5))
+
+        text(self.head, 12, 7, 11, NSFontWeightSemibold, SEGMENTS[self.bucket][2]())
+        for i, row in enumerate(self.rows):
+            y = LIST_HEAD_H + i * LIST_ROW_H
+            if i == self.hot:
+                NSColor.labelColor().colorWithAlphaComponent_(0.1).setFill()
+                NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+                    NSMakeRect(4, y, b.size.width - 8, LIST_ROW_H), 6, 6).fill()
+            text(row["title"], 12, y + 4, 12, 0.0, NSColor.labelColor())
+            text(row["sub"], 12, y + 20, 10, 0.0, NSColor.secondaryLabelColor())
+
+
+def _floating_panel(width, height):
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
-        NSMakeRect(0, 0, 120, BADGE_H),
+        NSMakeRect(0, 0, width, height),
         NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel,
         NSBackingStoreBuffered, False)
     panel.setLevel_(NSFloatingWindowLevel)
@@ -201,7 +345,19 @@ def make_badge_panel(view_delegate):
     panel.setCollectionBehavior_(NSWindowCollectionBehaviorCanJoinAllSpaces
                                  | NSWindowCollectionBehaviorStationary
                                  | NSWindowCollectionBehaviorFullScreenAuxiliary)
+    return panel
+
+
+def make_badge_panel(view_delegate):
+    panel = _floating_panel(120, BADGE_H)
     view = BadgeView.alloc().initWithFrame_delegate_(NSMakeRect(0, 0, 120, BADGE_H), view_delegate)
+    panel.setContentView_(view)
+    return panel, view
+
+
+def make_list_panel(view_delegate):
+    panel = _floating_panel(LIST_W, LIST_HEAD_H)
+    view = HoverListView.alloc().initWithFrame_delegate_(NSMakeRect(0, 0, LIST_W, LIST_HEAD_H), view_delegate)
     panel.setContentView_(view)
     return panel, view
 
@@ -219,6 +375,11 @@ class AppDelegate(NSObject):
     badge = objc.ivar()
     badge_view = objc.ivar()
     _menu_anchor = objc.ivar()
+    list_panel = objc.ivar()
+    list_view = objc.ivar()
+    items = objc.ivar()
+    hover_bucket = objc.ivar()
+    hover_x = objc.ivar()
 
     def initWithBoard_port_(self, board, port):
         self = objc.super(AppDelegate, self).init()
@@ -228,6 +389,7 @@ class AppDelegate(NSObject):
         self.port = port
         self.seen_needs = set()
         self.seeded = False
+        self.items = {}
         return self
 
     def applicationDidFinishLaunching_(self, note):
@@ -244,6 +406,7 @@ class AppDelegate(NSObject):
         self.popover.setContentViewController_(self.vc)
         self.popover.setDelegate_(self)
         self.badge, self.badge_view = make_badge_panel(self)
+        self.list_panel, self.list_view = make_list_panel(self)
         self._restore_badge()
         if self.board.persist.data["prefs"].get("badge", True):
             self.badge.orderFrontRegardless()
@@ -275,26 +438,34 @@ class AppDelegate(NSObject):
         except Exception as e:  # keep the runloop alive no matter what
             sys.stderr.write(f"refresh failed: {e}\n")
             return
-        counts = {"needs": 0, "working": 0, "inbox": 0, "due": 0}
+        items = {k: [] for k in SEGMENTS}
         needs_now = {}
+        agent_names = {a["root"]: a["display_name"] for a in snap["agents"]}
         for s in snap["sessions"]:
-            if s["bucket"] in counts:
-                counts[s["bucket"]] += 1
+            if s["bucket"] in items:
+                items[s["bucket"]].append({"id": s["id"], "title": s["title"], "session": s,
+                                           "sub": f"{s['agent_name']} · {s['label']} · {s['ago']}"})
             if s["bucket"] == "needs":
                 needs_now[s["id"]] = s
-        counts["due"] = sum(1 for f in snap.get("followups", []) if f["due"] != "upcoming")
+        for f in snap.get("followups", []):
+            if f["due"] != "upcoming":
+                when = "today" if f["due"] == "today" else f"{-f['days']}d overdue"
+                items["due"].append({"id": f["id"], "title": f["title"],
+                                     "sub": f"{agent_names.get(f['agent'], '')} · {when}"})
         for r in snap.get("routines", []):
             if r["failing"]:
-                counts["needs"] += 1
-                needs_now[f"{r['id']}:{r['last']['run_id']}"] = {
-                    "agent_name": next((a["display_name"] for a in snap["agents"] if a["root"] == r["agent"]), ""),
-                    "label": "Routine " + r["status"].replace("_", " "), "title": r["name"]}
+                n = {"agent_name": agent_names.get(r["agent"], ""),
+                     "label": "Routine " + r["status"].replace("_", " "), "title": r["name"]}
+                needs_now[f"{r['id']}:{r['last']['run_id']}"] = n
+                items["needs"].append({"id": r["id"], "title": r["name"], "sub": f"{n['agent_name']} · {n['label']}"})
+        counts = {k: len(v) for k, v in items.items()}
+        self.items = items
+        self._sync_list()
         self._set_title(counts)
         self.badge_view.counts = counts
         self.badge.setContentSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
         self.badge_view.setFrameSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
         self.badge_view.setNeedsDisplay_(True)
-        self.badge_view.setToolTip_(_legend(counts))
         new_ids = set(needs_now) - self.seen_needs
         if self.seeded and new_ids:
             if len(new_ids) == 1:
@@ -330,10 +501,68 @@ class AppDelegate(NSObject):
         o = self.badge.frame().origin
         self.board.persist.set_pref("badge_pos", [o.x, o.y])
 
+    @objc.python_method
+    def hover(self, bucket, x):
+        if self.popover.isShown():
+            return
+        if bucket != self.hover_bucket:
+            self.hover_bucket, self.hover_x = bucket, x
+            self._sync_list()
+
+    @objc.python_method
+    def hover_left(self):
+        # Leaving the badge for the list crosses a gap, so decide a beat later.
+        self.performSelector_withObject_afterDelay_("hoverCheck:", None, HOVER_LINGER_SECS)
+
+    def hoverCheck_(self, _):
+        p = NSEvent.mouseLocation()
+        if NSPointInRect(p, self.badge.frame()) or (self.list_panel.isVisible() and NSPointInRect(p, self.list_panel.frame())):
+            return
+        self.hide_list()
+
+    @objc.python_method
+    def hide_list(self):
+        self.hover_bucket = None
+        self.list_panel.orderOut_(None)
+
+    @objc.python_method
+    def _sync_list(self):
+        rows = self.items.get(self.hover_bucket) if self.hover_bucket else None
+        if not rows:
+            self.list_panel.orderOut_(None)
+            return
+        v = self.list_view
+        v.bucket = self.hover_bucket
+        v.head = SEGMENTS[self.hover_bucket][3].format(n=len(rows))
+        more = len(rows) - LIST_MAX
+        v.rows = rows[:LIST_MAX] + ([{"id": None, "title": f"+{more} more", "sub": "Open the board"}] if more > 0 else [])
+        h = v.desired_height()
+        badge = self.badge.frame()
+        screen = (self.badge.screen() or NSScreen.mainScreen()).visibleFrame()
+        x = min(max(badge.origin.x + self.hover_x - 12, screen.origin.x), screen.origin.x + screen.size.width - LIST_W)
+        y = badge.origin.y - 4 - h
+        if y < screen.origin.y:
+            y = badge.origin.y + BADGE_H + 4
+        self.list_panel.setFrame_display_(NSMakeRect(x, y, LIST_W, h), True)
+        v.setNeedsDisplay_(True)
+        self.list_panel.orderFrontRegardless()
+
+    @objc.python_method
+    def list_picked(self, row):
+        self.hide_list()
+        if row.get("session"):
+            launcher = self.board.persist.data["prefs"].get("launcher", "Terminal")
+            threading.Thread(target=terminal.open_session, args=(row["session"], launcher), daemon=True).start()
+            return
+        self.badgeClicked_(self.badge_view)
+        if row["id"]:
+            self.vc.select(row["id"])
+
     def badgeClicked_(self, view):
         if self.popover.isShown():
             self.popover.close()
             return
+        self.hide_list()
         self.vc.view()
         self.popover.showRelativeToRect_ofView_preferredEdge_(view.bounds(), view, 1)
         NSApp.activateIgnoringOtherApps_(True)
