@@ -250,7 +250,7 @@ function touchAgos() {
 }
 
 function counts(list) { const c = {needs:0, working:0, inbox:0, closed:0, done:0}; for (const s of list) c[s.bucket]++; return c; }
-function badges(c, late, reqs) { return `<span class="cnt">${reqs?`<b class="q" title="Requests from other agents">▸${reqs}</b>`:''}${late?`<b class="f" title="Follow-ups overdue or due today">◆${late}</b>`:''}${c.needs?`<b class="n">${c.needs}</b>`:''}${c.working?`<b class="w">${c.working}</b>`:''}${c.inbox?`<b class="i">${c.inbox}</b>`:''}</span>`; }
+function badges(c, late, reqs) { return `<span class="cnt">${reqs?`<b class="q" title="Requests and replies from other agents">▸${reqs}</b>`:''}${late?`<b class="f" title="Follow-ups overdue or due today">◆${late}</b>`:''}${c.needs?`<b class="n">${c.needs}</b>`:''}${c.working?`<b class="w">${c.working}</b>`:''}${c.inbox?`<b class="i">${c.inbox}</b>`:''}</span>`; }
 function lateCount(root) { return (DATA.followups || []).filter(f => (!root || f.agent === root) && f.due !== 'upcoming').length; }
 function requestCount(root) { return (DATA.requests || []).filter(q => !root || q.agent === root).length; }
 function failingCount(root) { return (DATA.routines || []).filter(r => (!root || r.agent === root) && r.failing).length; }
@@ -377,8 +377,9 @@ function followupRow(f, showAgent) {
 }
 function requestRow(q, showAgent) {
   const a = agentOf(q.agent);
-  const where = `from ${esc(q.from)}` + (showAgent && a ? ` → ${esc(a.display_name)}` : '');
-  return `<div class="item rq ${CUR===q.id?'on':''}" data-id="${q.id}"><span class="dot rq ${q.age}">▸</span><span class="t">${esc(q.title)}</span><span class="ago rq ${q.age}">${q.status === 'started' ? 'started · ' : ''}${esc(q.ago)}</span><span class="where">${where}</span></div>`;
+  const reply = q.kind === 'reply';
+  const where = `${reply ? 'reply ' : ''}from ${esc(q.from)}` + (showAgent && a ? ` → ${esc(a.display_name)}` : '');
+  return `<div class="item rq ${CUR===q.id?'on':''}" data-id="${q.id}"><span class="dot rq ${q.age}">${reply ? '◂' : '▸'}</span><span class="t">${esc(q.title)}</span><span class="ago rq ${q.age}">${q.status === 'started' ? 'started · ' : ''}${esc(q.ago)}</span><span class="where">${where}</span></div>`;
 }
 const RT_STATUS = {completed: 'Completed', incomplete: 'Incomplete', errored: 'Errored', timed_out: 'Timed out', running: 'Running', never: 'Never ran'};
 const RT_DOT = {completed: '✓', incomplete: '!', errored: '!', timed_out: '!', running: '◐', never: '○'};
@@ -497,7 +498,19 @@ function renderRequest(d, q) {
   const draft = d.dataset.rq === q.id && $('#rqBody') ? $('#rqBody').value : q.body;
   d.dataset.rq = q.id;
   const sender = q.from_session && DATA.sessions.some(s => s.id === q.from_session);
-  d.innerHTML = `
+  const reply = q.kind === 'reply';
+  if (reply) d.innerHTML = `
+    <button class="back quiet" id="back">‹ Back</button>
+    <h1>${esc(q.title)}</h1>
+    <div class="meta">reply from <b>${esc(q.from)}</b> to <b>${esc(a ? a.display_name : '')}</b> · closed ${esc(q.ago)} ago</div>
+    <div class="actions">
+      <button class="primary" id="rqStart" title="Open a session in ${esc(a ? a.display_name : '')}, in plan mode, with the request and this note quoted">Start session</button>
+      ${sender ? `<button id="rqSender" title="The session in ${esc(a ? a.display_name : '')} that sent the request">Open the asking session</button>` : ''}
+      <button id="rqDismiss" title="Remove it without starting anything">Dismiss</button>
+    </div>
+    <textarea class="rqbody" id="rqBody" maxlength="2000" spellcheck="false"></textarea>
+    <div class="path">Written by the agent "${esc(q.from)}" when it closed this request: “${esc(q.asked.split('\n')[0])}”. Edit it before starting if you want; the asking agent is told to weigh it, not obey it.</div>`;
+  else d.innerHTML = `
     <button class="back quiet" id="back">‹ Back</button>
     <h1>${esc(q.title)}</h1>
     <div class="meta">request from <b>${esc(q.from)}</b> to <b>${esc(a ? a.display_name : '')}</b> · sent ${esc(q.ago)} ago${q.status === 'started' ? ' · session started' : ''}</div>

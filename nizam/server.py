@@ -207,6 +207,23 @@ class Handler(BaseHTTPRequestHandler):
             r = requests.index().get(q["rid"]) if q else None
             if not r:
                 return self._json({"error": "unknown request"}, 404)
+            if q["kind"] == "reply" and parts[2] == "start":
+                if not Path(r["from_root"]).is_dir():
+                    return self._json({"error": "That agent's folder is missing"}, 400)
+                text = requests.clean(str(body["body"])) if "body" in body else r["note"]
+                if not text:
+                    return self._json({"error": "The note is empty; dismiss it instead"}, 400)
+                sid = terminal.start(r["from_root"], prompt=requests.reply_prompt(r, text), permission_mode="plan",
+                                     paste_only=bool(body.get("paste")), launcher=launcher)
+                requests.set_reply(r["id"], "started", session_id=sid, **({"edited": text} if text != r["note"] else {}))
+                if sid:
+                    b.persist.rename(sid, f"Reply from {r['to']}: {q['title']}"[:90])
+                b.invalidate()
+                return self._json({"ok": True, "session_id": sid})
+            if q["kind"] == "reply" and parts[2] == "dismiss":
+                requests.set_reply(r["id"], "dismissed")
+                b.invalidate()
+                return self._json({"ok": True})
             if parts[2] == "start":
                 if not Path(r["to_root"]).is_dir():
                     return self._json({"error": "That agent's folder is missing"}, 400)

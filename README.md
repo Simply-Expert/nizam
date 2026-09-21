@@ -175,6 +175,11 @@ You stay in the middle. A request is only queued; the board shows it under the r
 that agent sees it when you press Start session or ask it to check (`nizam request list`). Nothing is
 delivered on its own.
 
+There is one way back. When the request asks for an answer, the receiving agent can close it with a
+note (`nizam request done <id> "<note>"`). The note shows on the board as a reply under the agent
+that asked, handled like a request: read it, edit it, start a plan-mode session with it, or dismiss it.
+Closing without a note, the usual case, leaves nothing on the board.
+
 You decide who may write to whom in `~/.nizam/requests/links.md`:
 
 ```markdown
@@ -261,7 +266,7 @@ nizam run <file>      run one routine now, headless
 nizam request peers   the agents this one may write to
 nizam request send <peer> <what>   leave a request; the user decides when it is seen
 nizam request list    requests waiting for this agent, and what it sent
-nizam request done <id>   close a request that was handled or declined
+nizam request done <id> [note]   close a request; a note, when one is really needed, goes back via the board
 nizam login on|off    start at login (LaunchAgent)
 nizam doctor          check wiring, and say whether a newer release exists
 nizam update          move to the newest release, reinstall the hooks, restart the app

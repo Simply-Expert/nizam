@@ -223,11 +223,13 @@ def request_cmd(action: str, args: list[str]) -> int:
                     status = r["status"] if r["status"] not in requests.OPEN or requests.is_open(r) else "expired"
                     print(f"  [{r['id']}] to {r['to']}: {status:<10} {r['body'].splitlines()[0][:70]}")
         elif action == "done":
-            if len(args) != 1:
-                print("usage: nizam request done <id>", file=sys.stderr)
+            if not args:
+                print("usage: nizam request done <id> [note]  (use - to read the note from stdin)", file=sys.stderr)
                 return 2
-            requests.done(here, args[0])
-            print(f"request {args[0]} closed")
+            note = sys.stdin.read() if args[1:] == ["-"] else " ".join(args[1:])
+            r = requests.done(here, args[0], note)
+            print(f"request {args[0]} closed" + (f". The note is not delivered yet: the user decides whether "
+                  f"and when '{r['from']}' sees it." if requests.clean(note) else ""))
     except requests.Refused as e:
         print(f"refused: {e}", file=sys.stderr)
         return 1
@@ -258,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     rt = sub.add_parser("routines", help="list this agent's routines, or sync their schedules into launchd")
     rt.add_argument("action", choices=("list", "sync"))
     rt.add_argument("path", nargs="?", default=".", help="a folder inside the agent (default: here)")
-    rq = sub.add_parser("request", help="handoffs between agents: peers | send <peer> <what> | list | done <id>")
+    rq = sub.add_parser("request", help="handoffs between agents: peers | send <peer> <what> | list | done <id> [note]")
     rq.add_argument("action", choices=("peers", "send", "list", "done"))
     rq.add_argument("args", nargs="*")
     lg = sub.add_parser("login", help="start at login: on | off | status")
