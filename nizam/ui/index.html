@@ -56,6 +56,8 @@ aside { background: var(--panel); border-right: 1px solid var(--line); padding: 
 aside .brand { font-weight: 700; padding: 6px 8px 10px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
 aside .brand .ar { color: var(--muted); font-weight: 500; }
 aside .brand .sp { flex: 1; }
+aside .brand .pinbtn { padding: 2px 6px; font-size: 12px; filter: grayscale(1); opacity: .55; }
+aside .brand .pinbtn.on { filter: none; opacity: 1; background: var(--accent-bg); border-color: var(--accent); }
 aside .row { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 7px; cursor: pointer; }
 aside .row:hover { background: var(--hover); }
 aside .row.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
@@ -224,6 +226,7 @@ function save(k, v) { try { localStorage.setItem('nizam.'+k, JSON.stringify(v));
 let DATA = null, SEL = load('sel', {agent: null, area: null}), CUR = new URLSearchParams(location.search).get('select'), DRAG = null;
 let showDone = load('showDone', false), _lastKey = null, detailOpen = !!CUR;
 if (CUR) SEL = {agent: null, area: null};
+const NATIVE = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nizam;
 function nizamSelect(id) { SEL = {agent: null, area: null}; CUR = id; detailOpen = true; refresh(true); }
 
 async function api(path, body) {
@@ -283,7 +286,7 @@ function render() {
 /* ---------- sidebar ---------- */
 function renderSide() {
   const all = visible(DATA.sessions);
-  let h = `<div class="brand">Nizam <span class="ar">نظام</span><span class="sp"></span><button class="primary" id="newBtn" title="New session (n)">＋</button></div>`;
+  let h = `<div class="brand">Nizam <span class="ar">نظام</span><span class="sp"></span>${NATIVE?`<button class="quiet pinbtn ${DATA.prefs.board_pinned?'on':''}" id="pinBtn" title="${DATA.prefs.board_pinned?'Unpin: back to a popover that closes on click-away':'Pin: keep the board open as a window'}">📌</button>`:''}<button class="primary" id="newBtn" title="New session (n)">＋</button></div>`;
   h += `<div class="row ${!SEL.agent?'on':''}" data-a=""><span class="name">All agents</span>${badges(countsFor(all, null), lateCount(null), requestCount(null))}</div>`;
   h += `<div class="sec">Agents</div>`;
   const agents = sortedAgents();
@@ -296,6 +299,7 @@ function renderSide() {
   const side = $('#side'); side.innerHTML = h;
   side.querySelectorAll('[data-a]').forEach(el => el.addEventListener('click', () => { SEL = {agent: el.dataset.a || null, area: null}; save('sel', SEL); CUR = null; render(); }));
   $('#newBtn').addEventListener('click', () => openModal());
+  if (NATIVE) $('#pinBtn').addEventListener('click', () => NATIVE.postMessage({pin: !DATA.prefs.board_pinned}));
   $('#showDone').addEventListener('change', e => { showDone = e.target.checked; save('showDone', showDone); render(); });
   wireAgentRows(side, agents);
 }

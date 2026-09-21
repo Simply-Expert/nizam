@@ -123,6 +123,9 @@ last message was wrong too often; you are the only one who knows a task is over.
   draggable and exists because a full menu bar on a notched MacBook hides new status items.
 - **Board**: agents on the left (pin, rename, drag to reorder via right-click), the selected agent's
   sessions in the middle with area chips, and the full last message on the right.
+- **Keep it open**: the board closes when you click away. The 📌 next to the Nizam name (or *Keep
+  board open* in the right-click menu) turns it into a regular window that stays until you close it;
+  the badge then brings it to the front. Unpin to go back.
 - **Jump to** focuses the live session's tab (Terminal.app, iTerm, Ghostty 1.3+). **Resume** reopens
   an exited one with `claude --resume`. **New here** starts a session in that agent and area with
   your last-used settings; ⌥-click for the full dialog (prompt, permission mode, git worktree,

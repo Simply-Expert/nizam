@@ -21,10 +21,10 @@ from AppKit import (
     NSObject, NSTimer, NSWorkspace, NSURL, NSPanel, NSView, NSBezierPath, NSEvent,
     NSBackingStoreBuffered, NSMakePoint, NSScreen, NSFontWeightSemibold,
     NSImage, NSImageSymbolConfiguration, NSMutableAttributedString, NSTextAttachment,
-    NSTrackingArea, NSMutableParagraphStyle, NSParagraphStyleAttributeName,
+    NSTrackingArea, NSMutableParagraphStyle, NSParagraphStyleAttributeName, NSWindow,
 )
 from Foundation import NSURLRequest, NSPointInRect
-from WebKit import WKWebView, WKWebViewConfiguration
+from WebKit import WKWebView, WKWebViewConfiguration, WKUserContentController
 import objc
 
 from . import terminal, update
@@ -35,12 +35,17 @@ from .server import make_server
 from .state import Board
 
 POPOVER_SIZE = (1080, 680)
+BOARD_MIN_SIZE = (760, 440)
+BOARD_FRAME = "NizamBoard"
 REFRESH_SECS = 3.0
 NSPopoverBehaviorTransient = 1
 NSEventMaskLeftMouseDown = 1 << 1
 NSEventMaskRightMouseDown = 1 << 3
 NSFloatingWindowLevel = 5
 NSWindowStyleMaskBorderless = 0
+NSWindowStyleMaskTitled = 1 << 0
+NSWindowStyleMaskClosable = 1 << 1
+NSWindowStyleMaskResizable = 1 << 3
 NSWindowStyleMaskNonactivatingPanel = 1 << 7
 NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0
 NSWindowCollectionBehaviorStationary = 1 << 4
@@ -171,24 +176,35 @@ def _notify(title: str, body: str) -> None:
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-class BoardVC(NSViewController):
+class BoardVC(NSViewController, protocols=[objc.protocolNamed("WKScriptMessageHandler")]):
     web = objc.ivar()
     port = objc.ivar()
+    delegate = objc.ivar()
 
-    def initWithPort_(self, port):
+    def initWithPort_delegate_(self, port, delegate):
         self = objc.super(BoardVC, self).init()
         if self is None:
             return None
         self.port = port
+        self.delegate = delegate
         return self
 
     def loadView(self):
         cfg = WKWebViewConfiguration.alloc().init()
+        ucc = WKUserContentController.alloc().init()
+        ucc.addScriptMessageHandler_name_(self, "nizam")
+        cfg.setUserContentController_(ucc)
         self.web = WKWebView.alloc().initWithFrame_configuration_(
             NSMakeRect(0, 0, *POPOVER_SIZE), cfg)
         self.web.setValue_forKey_(False, "drawsBackground")
         self.setView_(self.web)
         self.reload()
+
+    def userContentController_didReceiveScriptMessage_(self, _ucc, message):
+        body = message.body()
+        if body is not None and "pin" in body:
+            # Re-hosting the web view from inside its own callback is asking for trouble.
+            self.delegate.performSelector_withObject_afterDelay_("applyPinned:", bool(body["pin"]), 0.0)
 
     @objc.python_method
     def reload(self, select=None):
@@ -201,6 +217,11 @@ class BoardVC(NSViewController):
             self.reload(item_id)
         else:
             self.web.evaluateJavaScript_completionHandler_(f"nizamSelect({json.dumps(item_id)})", None)
+
+    @objc.python_method
+    def refresh(self):
+        if self.web is not None and not self.web.isLoading():
+            self.web.evaluateJavaScript_completionHandler_("refresh(true)", None)
 
 
 def _track_hover(view):
@@ -441,6 +462,7 @@ def make_list_panel(view_delegate):
 class AppDelegate(NSObject):
     status = objc.ivar()
     popover = objc.ivar()
+    window = objc.ivar()
     vc = objc.ivar()
     board = objc.ivar()
     port = objc.ivar()
@@ -481,7 +503,7 @@ class AppDelegate(NSObject):
         self.popover = NSPopover.alloc().init()
         self.popover.setBehavior_(NSPopoverBehaviorTransient)
         self.popover.setContentSize_(NSSize(*POPOVER_SIZE))
-        self.vc = BoardVC.alloc().initWithPort_(self.port)
+        self.vc = BoardVC.alloc().initWithPort_delegate_(self.port, self)
         self.popover.setContentViewController_(self.vc)
         self.popover.setDelegate_(self)
         self.badge, self.badge_view = make_badge_panel(self)
@@ -504,6 +526,7 @@ class AppDelegate(NSObject):
         for title, sel, key in (("Cut", "cut:", "x"), ("Copy", "copy:", "c"),
                                 ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")):
             edit.addItem_(NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, sel, key))
+        edit.addItem_(NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Close Window", "performClose:", "w"))
         edit_item.setSubmenu_(edit)
         NSApp.setMainMenu_(menubar)
 
@@ -662,19 +685,85 @@ class AppDelegate(NSObject):
             launcher = self.board.persist.data["prefs"].get("launcher", "Terminal")
             threading.Thread(target=terminal.open_session, args=(row["session"], launcher), daemon=True).start()
             return
-        self.badgeClicked_(self.badge_view)
+        self._show_board(self.badge_view)
         if row["id"]:
             self.vc.select(row["id"])
 
     def badgeClicked_(self, view):
+        self.hide_list()
+        self._toggle_board(view)
+
+    @objc.python_method
+    def _pinned(self):
+        return bool(self.board.persist.data["prefs"].get("board_pinned"))
+
+    @objc.python_method
+    def _board_open(self):
+        return self.popover.isShown() or (self.window is not None and self.window.isVisible())
+
+    @objc.python_method
+    def _toggle_board(self, anchor):
         if self.popover.isShown():
             self.popover.close()
-            return
-        self.hide_list()
-        self.vc.view()
-        self.popover.showRelativeToRect_ofView_preferredEdge_(view.bounds(), view, 1)
+        elif self._pinned() and self._board_open() and self.window.isKeyWindow():
+            self.window.orderOut_(None)
+        else:
+            self._show_board(anchor)
+
+    @objc.python_method
+    def _show_board(self, anchor):
+        self.vc.view()   # force loadView before the first show
+        self._host(self._pinned())
+        if self._pinned():
+            self.window.makeKeyAndOrderFront_(None)
+        else:
+            self.popover.showRelativeToRect_ofView_preferredEdge_(anchor.bounds(), anchor, 1)
+            if anchor is self.badge_view:
+                self._install_monitor()
         NSApp.activateIgnoringOtherApps_(True)
-        self._install_monitor()
+
+    @objc.python_method
+    def _host(self, pinned):
+        """The board lives in one place at a time: the popover, or a regular window when pinned."""
+        if self.window is None:
+            self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+                NSMakeRect(0, 0, *POPOVER_SIZE),
+                NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable,
+                NSBackingStoreBuffered, False)
+            self.window.setTitle_("Nizam")
+            self.window.setReleasedWhenClosed_(False)
+            self.window.setContentMinSize_(NSSize(*BOARD_MIN_SIZE))
+        if pinned and self.window.contentViewController() is None:
+            self.popover.setAnimates_(False)
+            self.popover.close()
+            self.popover.setAnimates_(True)
+            self.popover.setContentViewController_(None)
+            self.window.setContentViewController_(self.vc)
+            if not self.window.setFrameUsingName_(BOARD_FRAME):
+                self.window.center()
+            self.window.setFrameAutosaveName_(BOARD_FRAME)
+        elif not pinned and self.popover.contentViewController() is None:
+            self.window.orderOut_(None)
+            self.window.setContentViewController_(None)
+            self.popover.setContentViewController_(self.vc)
+            self.popover.setContentSize_(NSSize(*POPOVER_SIZE))
+
+    @objc.python_method
+    def set_pinned(self, pinned):
+        was_open = self._board_open()
+        self.board.persist.set_pref("board_pinned", pinned)
+        self.board.invalidate()
+        self._host(pinned)
+        if was_open:
+            badge_on = self.board.persist.data["prefs"].get("badge", True)
+            self._show_board(self.badge_view if badge_on else self.status.button())
+        self.vc.refresh()
+
+    def applyPinned_(self, pinned):
+        self.set_pinned(bool(pinned))
+
+    def togglePinned_(self, _):
+        self.set_pinned(not self._pinned())
 
     def showMenuAt_(self, view):
         self._menu_anchor = view
@@ -719,13 +808,7 @@ class AppDelegate(NSObject):
         self.togglePopover_(sender)
 
     def togglePopover_(self, sender):
-        if self.popover.isShown():
-            self.popover.close()
-            return
-        self.vc.view()   # force loadView before the first show
-        self.popover.showRelativeToRect_ofView_preferredEdge_(
-            self.status.button().bounds(), self.status.button(), 1)
-        NSApp.activateIgnoringOtherApps_(True)
+        self._toggle_board(self.status.button())
 
     @objc.python_method
     def _show_menu(self):
@@ -738,6 +821,9 @@ class AppDelegate(NSObject):
         badge = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Floating badge", "toggleBadge:", "")
         badge.setState_(1 if self.board.persist.data["prefs"].get("badge", True) else 0)
         menu.addItem_(badge)
+        pinned = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Keep board open", "togglePinned:", "")
+        pinned.setState_(1 if self._pinned() else 0)
+        menu.addItem_(pinned)
         menu.addItem_(NSMenuItem.separatorItem())
         if self.update_info:
             item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
