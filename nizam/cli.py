@@ -1,4 +1,4 @@
-"""`nizam` command line: serve, open, install/uninstall hooks, doctor."""
+"""`nizam` command line: serve, open, install/uninstall hooks, doctor, update."""
 from __future__ import annotations
 
 import argparse
@@ -24,11 +24,15 @@ def _venv_ok() -> bool:
         [str(VENV_PY), "-c", "import AppKit, WebKit"], capture_output=True).returncode == 0
 
 
+def _seed_python() -> str | None:
+    return next((p for p in ("/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3")
+                 if Path(p).exists()), None)
+
+
 def ensure_venv() -> bool:
     if _venv_ok():
         return True
-    seed = next((p for p in ("/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3")
-                 if Path(p).exists()), None)
+    seed = _seed_python()
     if not seed:
         print("no python3 found for the menu-bar app venv"); return False
     print(f"→ creating {VENV} and installing PyObjC (one-time)…")
@@ -94,8 +98,59 @@ def uninstall_hooks() -> None:
         print(f"✓ {n} routine schedule(s) removed from launchd; the routine files are untouched")
 
 
+def update_cmd(check_only: bool) -> int:
+    from . import update
+    from .launch import app_running
+    try:
+        info = update.check()
+        if not info["latest"]:
+            print(f"Nizam {info['current']} is up to date")
+            return 0
+        if check_only:
+            print(f"Nizam {info['latest']} is available (installed: {info['current']}); run: nizam update")
+            return 0
+        update.apply(info)
+    except update.UpdateError as e:
+        print(f"update failed: {e}", file=sys.stderr)
+        return 1
+    print(f"✓ {info['current']} → {info['latest']}")
+    # install records the interpreter it ran under, so never the venv's.
+    py = _seed_python() or _python()
+    if subprocess.run([py, "-m", "nizam", "install"], cwd=str(update.SRC)).returncode:
+        return 1
+    if app_running():
+        port = PORT_FILE.read_text().strip() if PORT_FILE.exists() else "7331"
+        return subprocess.run([py, "-m", "nizam", "app", "--restart", "--port", port], cwd=str(update.SRC)).returncode
+    return 0
+
+
+def start_update() -> subprocess.Popen:
+    """`nizam update` in its own session, so it outlives the app it is about to restart."""
+    from .terminal import clean_env
+    from .update import SRC
+    log = open(NIZAM_DIR / "update.log", "ab")
+    return subprocess.Popen([_seed_python() or _python(), "-m", "nizam", "update"], env=clean_env(), cwd=str(SRC),
+                            stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True, close_fds=True)
+
+
+def _version_line() -> str:
+    from . import update
+    try:
+        here = update.installed()["label"]
+    except update.UpdateError as e:
+        return f"version: unknown ({e})"
+    try:
+        info = update.check()
+    except update.UpdateError as e:
+        return f"version: {here} (could not check for a newer one: {e})"
+    if info["latest"]:
+        return f"version: {info['current']}; {info['latest']} is available, run: nizam update"
+    return f"version: {info['current']} (up to date)"
+
+
 def doctor() -> int:
     ok = True
+    print(_version_line())
     from .state import events_summary
     size, count, span = events_summary()
     print(f"events file: {EVENTS_FILE} ({size} bytes, {count} events over {span:.1f}d)")
@@ -189,6 +244,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("install", help="install the hooks and the /nizam skill")
     sub.add_parser("uninstall", help="remove the hooks and the /nizam skill")
     sub.add_parser("doctor", help="check wiring")
+    up = sub.add_parser("update", help="move to the newest release, reinstall the hooks, restart the app")
+    up.add_argument("--check", action="store_true", help="only say whether a newer release exists")
     ap = sub.add_parser("app", help="run the menu-bar app (server included)")
     ap.add_argument("--port", type=int, default=7331)
     ap.add_argument("--quit", action="store_true", help="quit the running menu-bar app")
@@ -249,6 +306,8 @@ def main(argv: list[str] | None = None) -> int:
         uninstall_hooks(); return 0
     if a.cmd == "doctor":
         return doctor()
+    if a.cmd == "update":
+        return update_cmd(a.check)
     return 1
 
 

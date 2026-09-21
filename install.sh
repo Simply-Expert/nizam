@@ -1,7 +1,7 @@
 #!/bin/bash
 # Nizam installer — macOS only.
 #   curl -fsSL https://raw.githubusercontent.com/Simply-Expert/nizam/main/install.sh | bash
-# Re-run the same line to upgrade. Env overrides:
+# Upgrade later with `nizam update`, or re-run the same line. Env overrides:
 #   NIZAM_SRC   where the code lives      (default ~/.nizam/src)
 #   NIZAM_REPO  git URL to clone          (default https://github.com/Simply-Expert/nizam)
 #   NIZAM_REF   branch or tag to check out (default: the newest v* tag, or main when there is none)
@@ -66,7 +66,6 @@ fi
 case "${LOGIN:-y}" in n|N|no|NO) ;; *) ( cd "$SRC" && "$PY" -m nizam login on ) ;; esac
 
 step "Launching"
-( cd "$SRC" && nohup "$PY" -m nizam app >/dev/null 2>&1 & )
-sleep 2
+( cd "$SRC" && "$PY" -m nizam app --restart >/dev/null )
 ok "Nizam is running. Look for the floating badge near the top-right of your screen."
 printf '%s  nizam open        # board in the browser\n  nizam app --quit  # stop\n  nizam doctor      # check wiring%s\n' "$DIM" "$RESET"

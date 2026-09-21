@@ -27,9 +27,10 @@ from Foundation import NSURLRequest, NSPointInRect
 from WebKit import WKWebView, WKWebViewConfiguration
 import objc
 
-from . import terminal
+from . import terminal, update
 from .paths import NIZAM_DIR, ensure_dirs
-from .launch import PID_FILE, QUIT_FLAG, login_enabled, set_login
+from .cli import start_update
+from .launch import PID_FILE, QUIT_FLAG, app_running, login_enabled, set_login
 from .server import make_server
 from .state import Board
 
@@ -53,6 +54,8 @@ BADGE_H = 28
 LIST_W, LIST_ROW_H, LIST_HEAD_H, LIST_PAD, LIST_MAX = 300, 38, 26, 6, 10
 HOVER_LINGER_SECS = 0.3
 LIMITS = "limits"
+UPDATE = "update"
+LIST_HEADS = {LIMITS: "Plan usage", UPDATE: "Update"}
 LIMIT_WARN, LIMIT_HIGH = 70, 90
 LIMIT_AHEAD = 10             # points of slack before use counts as ahead of pace
 LIMIT_STALE_SECS = 30 * 60   # headless runs spend the plan without reporting it
@@ -213,6 +216,7 @@ class BadgeView(NSView):
     delegate = objc.ivar()
     counts = objc.ivar()
     limits = objc.ivar()
+    has_update = objc.ivar()
     _spans = objc.ivar()
     _down = objc.ivar()
     _dragged = objc.ivar()
@@ -241,6 +245,8 @@ class BadgeView(NSView):
         out = [(k, _segment(k, self.counts[k], font, True)) for k in _shown(self.counts)]
         if self.limits:
             out.append((LIMITS, _limits_segment(self.limits, font)))
+        if self.has_update:
+            out.append((UPDATE, _icon("arrow.down.circle", "↓", NSColor.systemBlueColor(), font)))
         return out
 
     @objc.python_method
@@ -450,6 +456,8 @@ class AppDelegate(NSObject):
     items = objc.ivar()
     hover_bucket = objc.ivar()
     hover_x = objc.ivar()
+    update_info = objc.ivar()
+    updating = objc.ivar()
 
     def initWithBoard_port_(self, board, port):
         self = objc.super(AppDelegate, self).init()
@@ -460,6 +468,7 @@ class AppDelegate(NSObject):
         self.seen_needs = set()
         self.seeded = False
         self.items = {}
+        self.updating = False
         return self
 
     def applicationDidFinishLaunching_(self, note):
@@ -531,11 +540,13 @@ class AppDelegate(NSObject):
         counts = {k: len(v) for k, v in items.items()}
         limits = snap.get("limits", [])
         items[LIMITS] = _limit_rows(limits)
+        self._sync_update(items)
         self.items = items
         self._sync_list()
         self._set_title(counts)
         self.badge_view.counts = counts
         self.badge_view.limits = limits
+        self.badge_view.has_update = bool(items[UPDATE])
         self.badge.setContentSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
         self.badge_view.setFrameSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
         self.badge_view.setNeedsDisplay_(True)
@@ -550,6 +561,20 @@ class AppDelegate(NSObject):
         self.seeded = True
 
     @objc.python_method
+    def _sync_update(self, items):
+        info = update.poll()
+        self.update_info = info if info and info["latest"] else None
+        items[UPDATE] = []
+        if not self.update_info:
+            return
+        latest = self.update_info["latest"]
+        items[UPDATE].append({"id": None, "update": True, "title": f"Nizam {latest} is available",
+                              "sub": "Updating…" if self.updating else f"You have {self.update_info['current']} · click to update"})
+        if self.board.persist.data["prefs"].get("update_notified") != latest:
+            self.board.persist.set_pref("update_notified", latest)
+            _notify("Nizam", f"{latest} is available. Right-click the badge to update.")
+
+    @objc.python_method
     def _set_title(self, c):
         font = NSFont.menuBarFontOfSize_(0)
         title = NSMutableAttributedString.alloc().init()
@@ -558,7 +583,10 @@ class AppDelegate(NSObject):
                 title.appendAttributedString_(NSAttributedString.alloc().initWithString_attributes_("   ", {NSFontAttributeName: font}))
             title.appendAttributedString_(_segment(k, c[k], font, False))
         self.status.button().setAttributedTitle_(title)
-        self.status.button().setToolTip_(f"Nizam نظام — {_legend(c)}\nClick for the board, right-click for options")
+        tip = f"Nizam نظام — {_legend(c)}\nClick for the board, right-click for options"
+        if self.update_info:
+            tip += f"\n{self.update_info['latest']} is available"
+        self.status.button().setToolTip_(tip)
 
     @objc.python_method
     def _restore_badge(self):
@@ -606,7 +634,8 @@ class AppDelegate(NSObject):
             return
         v = self.list_view
         v.bucket = self.hover_bucket
-        v.head = SEGMENTS[self.hover_bucket][3].format(n=len(rows)) if self.hover_bucket in SEGMENTS else "Plan usage"
+        v.head = (SEGMENTS[self.hover_bucket][3].format(n=len(rows)) if self.hover_bucket in SEGMENTS
+                  else LIST_HEADS[self.hover_bucket])
         more = len(rows) - LIST_MAX
         v.rows = rows[:LIST_MAX] + ([{"id": None, "title": f"+{more} more", "sub": "Open the board"}] if more > 0 else [])
         h = v.desired_height()
@@ -622,6 +651,10 @@ class AppDelegate(NSObject):
 
     @objc.python_method
     def list_picked(self, row):
+        if row.get("update"):
+            self.hide_list()
+            self.startUpdate_(None)
+            return
         if row.get("inert"):
             return
         self.hide_list()
@@ -706,6 +739,12 @@ class AppDelegate(NSObject):
         badge.setState_(1 if self.board.persist.data["prefs"].get("badge", True) else 0)
         menu.addItem_(badge)
         menu.addItem_(NSMenuItem.separatorItem())
+        if self.update_info:
+            item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                f"Update to {self.update_info['latest']}", None if self.updating else "startUpdate:", "")
+        else:
+            item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Check for updates", "checkUpdates:", "")
+        menu.addItem_(item)
         menu.addItem_(NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Quit Nizam", "quit:", "q"))
         for i in range(menu.numberOfItems()):
             menu.itemAtIndex_(i).setTarget_(self)
@@ -726,6 +765,33 @@ class AppDelegate(NSObject):
     def toggleLogin_(self, _):
         set_login(not login_enabled())
 
+    def startUpdate_(self, _):
+        if self.updating or not self.update_info:
+            return
+        self.updating = True
+        _notify("Nizam", f"Updating to {self.update_info['latest']}…")
+
+        def work():
+            failed = start_update().wait()
+            self.updating = False
+            if failed:
+                _notify("Nizam update failed", f"See {NIZAM_DIR / 'update.log'}")
+        threading.Thread(target=work, daemon=True).start()
+
+    def checkUpdates_(self, _):
+        def work():
+            try:
+                info = update.check()
+            except update.UpdateError as e:
+                _notify("Nizam", f"Could not check for updates: {e}")
+                return
+            if info["latest"]:
+                self.board.persist.set_pref("update_notified", info["latest"])
+                _notify("Nizam", f"{info['latest']} is available. Right-click the badge to update.")
+            else:
+                _notify("Nizam", f"{info['current']} is up to date")
+        threading.Thread(target=work, daemon=True).start()
+
     def quit_(self, _):
         if self.timer is not None:
             self.timer.invalidate()
@@ -735,8 +801,7 @@ class AppDelegate(NSObject):
 
 def run(port: int) -> int:
     ensure_dirs()
-    from .launch import pid_alive
-    if PID_FILE.exists() and pid_alive(int(PID_FILE.read_text() or 0)):
+    if app_running():
         sys.stderr.write("Nizam is already running in the menu bar.\n")
         return 1
     PID_FILE.write_text(str(os.getpid()))

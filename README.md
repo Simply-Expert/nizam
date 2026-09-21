@@ -61,8 +61,13 @@ curl -fsSL https://raw.githubusercontent.com/Simply-Expert/nizam/main/install.sh
 That clones the code to `~/.nizam/src`, installs Claude Code hooks into `~/.claude/settings.json`
 (a backup is kept beside it; your status line command is wrapped, not replaced, so the badge can show
 plan usage), builds a small PyObjC venv, links a `nizam` command, and starts the
-app. It installs the newest tagged release; re-run the same line to upgrade, or set `NIZAM_REF=main`
-to follow development. Nothing phones home and nothing needs an API key.
+app. It installs the newest tagged release, or set `NIZAM_REF=main` to follow development. Nothing
+needs an API key, and the only thing Nizam asks the network is one `git ls-remote` a day against the
+repo it was cloned from, to see whether a newer release exists.
+
+When one does, a blue arrow appears on the badge: click it, or right-click and choose *Update to
+vX.Y.Z*, or run `nizam update`. That moves the checkout to the newest tag, reinstalls the hooks and
+restarts the app. It never updates on its own, and it refuses when the checkout has local changes.
 
 Manual install:
 
@@ -255,7 +260,9 @@ nizam request send <peer> <what>   leave a request; the user decides when it is 
 nizam request list    requests waiting for this agent, and what it sent
 nizam request done <id>   close a request that was handled or declined
 nizam login on|off    start at login (LaunchAgent)
-nizam doctor          check wiring
+nizam doctor          check wiring, and say whether a newer release exists
+nizam update          move to the newest release, reinstall the hooks, restart the app
+nizam update --check  only say whether a newer release exists
 ```
 
 ## Files
@@ -267,6 +274,7 @@ nizam doctor          check wiring
 | `~/.nizam/routines` | Routine run records (`runs.jsonl`, with the tail of each run's final reply), per-run logs, locks. Treat as private. |
 | `~/.nizam/requests` | `links.md` (who may write to whom; yours to edit) and `requests.jsonl` (every request, refusal and outcome). Treat as private. |
 | `~/Library/LaunchAgents/co.nizam.routine.*` | One per scheduled routine; written by `nizam routines sync`, removed by `nizam uninstall` |
+| `~/.nizam/update.json` | The last update check: installed version, newest version, when. `update.log` beside it holds updates started from the badge. |
 | `~/.nizam/venv` | PyObjC for the Mac shell |
 | `~/.nizam/src` | The code, when installed with the one-liner |
 | `~/.claude/settings.json` | Gets eight `nizam/hook.py` hook entries; `nizam uninstall` removes them |

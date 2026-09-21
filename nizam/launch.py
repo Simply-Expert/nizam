@@ -49,8 +49,12 @@ def pid_alive(pid: int) -> bool:
         return False
 
 
+def app_running() -> bool:
+    return PID_FILE.exists() and pid_alive(int(PID_FILE.read_text() or 0))
+
+
 def request_quit() -> int:
-    if PID_FILE.exists() and pid_alive(int(PID_FILE.read_text() or 0)):
+    if app_running():
         QUIT_FLAG.touch()
         print("asked the menu-bar app to quit")
         return 0
@@ -61,7 +65,7 @@ def request_quit() -> int:
 def wait_for_quit(timeout: float = 15.0) -> bool:
     """Ask the running app to quit and wait for it to exit; True once none is running."""
     import time
-    if not (PID_FILE.exists() and pid_alive(int(PID_FILE.read_text() or 0))):
+    if not app_running():
         return True
     pid = int(PID_FILE.read_text())
     QUIT_FLAG.touch()
