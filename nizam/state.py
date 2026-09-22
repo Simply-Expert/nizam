@@ -200,6 +200,15 @@ class Persisted:
                 self.data["names"].pop(sid, None)
             self.save()
 
+    def star(self, sid: str, on: bool) -> None:
+        with self.lock:
+            stars = self.data.setdefault("starred", {})
+            if on:
+                stars[sid] = time.time()
+            else:
+                stars.pop(sid, None)
+            self.save()
+
     def set_pref(self, key: str, value) -> None:
         with self.lock:
             self.data["prefs"][key] = value
@@ -304,6 +313,7 @@ class Board:
         done_map: dict = self.persist.data["done"]
         reopened: dict = self.persist.data.get("reopened", {})
         names: dict = self.persist.data["names"]
+        starred: dict = self.persist.data.get("starred", {})
 
         sessions = []
         agents: dict[str, dict] = {}
@@ -365,6 +375,7 @@ class Board:
                 "preview": _preview(preview),
                 "question": _looks_like_question(preview) if bucket in ("inbox", "closed") else False,
                 "done": done,
+                "starred": sid in starred,
                 "hooked": h is not None,
             })
         order = {"needs": 0, "working": 1, "inbox": 2, "closed": 3, "done": 4}

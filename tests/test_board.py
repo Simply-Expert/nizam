@@ -185,6 +185,15 @@ class Rows(BoardCase):
         s = self.row()
         self.assertEqual((s["title"], s["auto_title"]), ("Mine", "Named"))
 
+    def test_star_is_a_toggle(self):
+        self.chat()
+        self.assertFalse(self.row()["starred"])
+        self.board.persist.star(SID, True)
+        self.assertTrue(self.row()["starred"])
+        self.board.persist.star(SID, False)
+        self.assertFalse(self.row()["starred"])
+        self.assertNotIn(SID, self.board.persist.data["starred"])
+
     def test_launch_cwd_wins_over_a_later_cd(self):
         elsewhere = self.home / "work" / "legal"
         elsewhere.mkdir()

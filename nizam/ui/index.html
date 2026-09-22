@@ -9,7 +9,7 @@
   --bg: #f6f7f9; --panel: #ffffff; --line: #e3e6ea; --text: #1a1d21; --muted: #6b7280;
   --needs: #d93025; --needs-bg: #fdecea; --working: #b26a00; --working-bg: #fff4dd;
   --inbox: #1a7f37; --inbox-bg: #e6f4ea; --done: #6b7280; --done-bg: #eef0f2;
-  --accent: #2563eb; --accent-bg: #e8effd; --hover: #f0f2f5; --due: #7c3aed; --due-bg: #f1eafd;
+  --accent: #2563eb; --accent-bg: #e8effd; --hover: #f0f2f5; --due: #7c3aed; --due-bg: #f1eafd; --star: #e0a800;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
 }
@@ -17,13 +17,13 @@
   --bg: #121417; --panel: #1b1e23; --line: #2a2f37; --text: #e6e8eb; --muted: #8b93a1;
   --needs: #ff6b62; --needs-bg: #3a1f1d; --working: #f0b04a; --working-bg: #3a2d14;
   --inbox: #4ccf7a; --inbox-bg: #16301f; --done: #8b93a1; --done-bg: #23272e;
-  --accent: #6ea8ff; --accent-bg: #1c2a44; --hover: #22262d; --due: #b79bff; --due-bg: #2a2140;
+  --accent: #6ea8ff; --accent-bg: #1c2a44; --hover: #22262d; --due: #b79bff; --due-bg: #2a2140; --star: #f5c542;
 }}
 :root[data-theme="dark"] {
   --bg: #121417; --panel: #1b1e23; --line: #2a2f37; --text: #e6e8eb; --muted: #8b93a1;
   --needs: #ff6b62; --needs-bg: #3a1f1d; --working: #f0b04a; --working-bg: #3a2d14;
   --inbox: #4ccf7a; --inbox-bg: #16301f; --done: #8b93a1; --done-bg: #23272e;
-  --accent: #6ea8ff; --accent-bg: #1c2a44; --hover: #22262d; --due: #b79bff; --due-bg: #2a2140;
+  --accent: #6ea8ff; --accent-bg: #1c2a44; --hover: #22262d; --due: #b79bff; --due-bg: #2a2140; --star: #f5c542;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; background: var(--bg); }
@@ -91,6 +91,11 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .item:hover { background: var(--hover); }
 .item.on { background: var(--accent-bg); }
 .item.done { opacity: .7; }
+.item.starred { box-shadow: inset 3px 0 0 var(--star); }
+.item.starred .t::before, .detail h1 .star.on::before { content: "★ "; color: var(--star); }
+.detail h1 .star { border: none; padding: 0 6px; font-size: 16px; color: var(--muted); }
+.detail h1 .star::before { content: "☆"; }
+.detail h1 .star:hover { background: none; color: var(--star); }
 .item.closed .t { font-weight: 500; }
 .item .rowdone { display: none; padding: 0 7px; font-size: 11px; line-height: 18px; }
 .item.closed:hover .rowdone { display: inline-block; }
@@ -401,7 +406,7 @@ function routineRow(r, showAgent) {
 function sessionRow(s) {
   const where = SEL.agent ? (s.area ? esc(s.area) : '') : esc(s.agent_name) + (s.area ? ' › ' + esc(s.area) : '');
   const p = s.bucket === 'needs' && s.detail ? `<span class="p why">${esc(s.detail)}</span>` : `<span class="p">${esc(lastPara(s.preview))}</span>`;
-  return `<div class="item ${s.bucket} ${CUR===s.id?'on':''}" data-id="${s.id}" title="Double-click or Enter to ${s.live?'jump to':'resume'}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span><span class="t">${esc(s.title)}</span><span class="ago"><span class="agotxt">${esc(s.ago)}</span>${s.bucket==='closed'?`<button class="rowdone" data-done="${s.id}" title="Mark done">Done ✓</button>`:''}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
+  return `<div class="item ${s.bucket} ${s.starred?'starred':''} ${CUR===s.id?'on':''}" data-id="${s.id}" title="Double-click or Enter to ${s.live?'jump to':'resume'}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span><span class="t">${esc(s.title)}</span><span class="ago"><span class="agotxt">${esc(s.ago)}</span>${s.bucket==='closed'?`<button class="rowdone" data-done="${s.id}" title="Mark done">Done ✓</button>`:''}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
 }
 function renderList() {
   const agent = agentOf(SEL.agent);
@@ -585,7 +590,7 @@ function renderDetail() {
   const doneBtn = s.bucket === 'done' ? `<button data-act="reopen">Reopen</button>` : `<button data-act="done">Done ✓</button>`;
   d.innerHTML = `
     <button class="back quiet" id="back">‹ Back</button>
-    <h1><span class="t" title="Click to rename">${esc(s.title)}</span></h1>
+    <h1><button class="star ${s.starred?'on':''}" data-act="star" title="${s.starred?'Unstar':'Star'} (s)"></button><span class="t" title="Click to rename">${esc(s.title)}</span></h1>
     <div class="meta"><b>${esc(s.agent_name)}</b>${s.area?` › ${esc(s.area)}`:''} · <span class="ago">${esc(s.ago)}</span> ago ${s.live?'<span class="tag live">live</span>':'<span class="tag">exited</span>'}${s.question?'<span class="tag q">asks something</span>':''}${(!s.hooked && s.live)?'<span class="tag" title="No hook events yet; state inferred from the transcript">inferred</span>':''}</div>
     <div class="state ${s.bucket}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span>${esc(s.label)}</div>
     ${s.detail ? `<div class="why">${esc(s.detail)}</div>` : ''}
@@ -711,6 +716,7 @@ document.addEventListener('keydown', e => {
     CUR = NAV[i]; renderListSelection(); renderDetail(); e.preventDefault();
     const el = document.querySelector(`.item[data-id="${CUR}"]`); if (el) el.scrollIntoView({block: 'nearest'});
   }
+  if (e.key === 's' && CUR && !e.metaKey && !e.ctrlKey && DATA.sessions.some(x => x.id === CUR)) api(`/api/sessions/${CUR}/star`, {}).then(() => refresh(true));
   if (e.key === 'd' && CUR) { const s = DATA.sessions.find(x => x.id === CUR); if (s && s.bucket !== 'done') api(`/api/sessions/${CUR}/done`, {}).then(() => refresh(true)); }
   if (e.key === 'Enter') openSession(CUR);
 });

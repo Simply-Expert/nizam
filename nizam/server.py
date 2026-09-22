@@ -115,6 +115,8 @@ class Handler(BaseHTTPRequestHandler):
                 b.persist.reopen(sid)
             elif action == "rename":
                 b.persist.rename(sid, str(body.get("name", "")))
+            elif action == "star":
+                b.persist.star(sid, not s["starred"] if body.get("on") is None else bool(body["on"]))
             elif action == "open":
                 ok = terminal.open_session(s, launcher, bool(body.get("paste")))
                 b.invalidate()

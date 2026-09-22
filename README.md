@@ -138,7 +138,8 @@ last message was wrong too often; you are the only one who knows a task is over.
   shows in *All agents* until it succeeds or you dismiss it. **Run now** starts one by hand,
   **Open last run** resumes that run as a normal session, **Sync schedule** installs a new schedule.
 - **Clear** marks every *Closed* session in the current view as done; hovering a Closed row shows a Done button.
-- Keys: `j`/`k` move, `Enter` jumps, `d` marks done, `n` starts a session, `Esc` closes.
+- **Star** a session from its title in the detail pane; it gets a ★ and a gold edge in the list.
+- Keys: `j`/`k` move, `Enter` jumps, `d` marks done, `s` stars, `n` starts a session, `Esc` closes.
 - Notifications fire when a session newly needs you.
 
 Claude Code sessions started from the Claude desktop app appear too, but without a live status
