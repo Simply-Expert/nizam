@@ -67,7 +67,7 @@ def _days(spec: str) -> list[int]:
 def parse_schedule(text: str) -> list[dict]:
     """`manual`, or `;`-separated clauses: `daily 09:30, 16:00`,
     `sat-thu 09:30; fri 09:30`, `mon, wed 08:00`, `monthly 1 09:00`,
-    `hourly :15`. Returns launchd StartCalendarInterval dicts ([] = manual)."""
+    `hourly :15`, `hourly :15 08-22`. Returns launchd StartCalendarInterval dicts ([] = manual)."""
     text = (text or "").strip().lower()
     if text in ("", "manual"):
         return []
@@ -77,7 +77,15 @@ def parse_schedule(text: str) -> list[dict]:
             mins = [int(m) for m in re.findall(r":(\d{2})", clause)] or [0]
             if any(m > 59 for m in mins):
                 raise ScheduleError(f"bad minute in '{clause}'")
-            out += [{"Minute": m} for m in mins]
+            window = re.search(r"(?<![\d:])(\d{1,2})\s*-\s*(\d{1,2})\b", clause)
+            if not window:
+                out += [{"Minute": m} for m in mins]
+                continue
+            lo, hi = int(window.group(1)), int(window.group(2))
+            if lo > 23 or hi > 23:
+                raise ScheduleError(f"bad hours in '{clause}' (use 08-22)")
+            hours = [h % 24 for h in range(lo, hi + 1 if hi >= lo else hi + 25)]
+            out += [{"Hour": h, "Minute": m} for h in hours for m in mins]
             continue
         times = [(int(h), int(m)) for h, m in _TIME.findall(clause)]
         if not times or any(h > 23 or m > 59 for h, m in times):

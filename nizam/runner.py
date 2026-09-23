@@ -88,13 +88,13 @@ def _kill(proc: subprocess.Popen) -> None:
 
 
 def _watch(proc: subprocess.Popen, timeout: int, log: Path, on_line) -> tuple[bool, float]:
-    """Stream the child's output into the log until it exits or the wall clock runs out."""
+    """Stream the child's output into the log until it exits or its awake time runs out."""
     assert proc.stdout
     stdout = proc.stdout
     awake = None
     if shutil.which("caffeinate"):
-        # Idle sleep mid-run kills network calls; closing the lid still sleeps the Mac.
-        awake = subprocess.Popen(["caffeinate", "-i", "-w", str(proc.pid)],
+        # -s holds a closed lid only on AC power; on battery macOS sleeps anyway.
+        awake = subprocess.Popen(["caffeinate", "-i", "-s", "-w", str(proc.pid)],
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def pump() -> None:
@@ -114,7 +114,7 @@ def _watch(proc: subprocess.Popen, timeout: int, log: Path, on_line) -> tuple[bo
         if now - prev > POLL + 30:
             slept += now - prev
         prev = now
-        if now - started > timeout:
+        if now - started - slept > timeout:
             timed_out = True
             _kill(proc)
     t.join(timeout=10)
@@ -125,7 +125,7 @@ def _watch(proc: subprocess.Popen, timeout: int, log: Path, on_line) -> tuple[bo
 
 def _timeout_note(r: R.Routine, slept: float) -> str:
     limit = f"{r.timeout // 60} min" if r.timeout >= 120 else f"{r.timeout}s"
-    return f"Stopped after the {limit} limit" + (f"; the Mac slept for {int(slept // 60)} min of it." if slept else ".")
+    return f"Stopped after the {limit} limit" + (f" (not counting {int(slept // 60)} min the Mac slept)." if slept else ".")
 
 
 def _script(r: R.Routine, env: dict, log: Path) -> dict:

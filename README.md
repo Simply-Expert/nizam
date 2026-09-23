@@ -222,7 +222,9 @@ whether or not the Nizam app is running, and a slot missed while the Mac slept r
 - one run per agent at a time; a second routine queues instead of killing the first
 - the login shell's `PATH`, so `node`-based MCP servers work under launchd
 - `env_file: .env.local` in the header, for what a wrapper used to `source`
-- a wall-clock timeout that kills the whole process group, and `caffeinate` so idle sleep does not cut a run short
+- a timeout that kills the whole process group, counting only time the Mac was awake: a run frozen by
+  sleep resumes on wake instead of being killed
+- `caffeinate` so idle sleep does not cut a run short, and on AC power neither does closing the lid
 - one retry when a run fails within 90 seconds, which is what a run fired on wake before the network is up looks like
 - every run must end with `OUTCOME: COMPLETE`. A headless run that stops to ask "shall I proceed?"
   exits 0 having done nothing; here it is reported as *incomplete*
@@ -247,7 +249,7 @@ Already have routines as hand-made LaunchAgents with shell wrappers? Or as cron 
 and retires the old job in the same step it installs the new one.
 
 Schedules: `manual`, `daily 09:30, 16:00`, `mon, wed 08:00`, `sat-thu 09:30` (ranges wrap),
-`monthly 1 09:00`, `hourly :15`, joined with `;`. Local time. A slot missed while the Mac was powered
+`monthly 1 09:00`, `hourly :15`, `hourly :15 08-22` (only those hours), joined with `;`. Local time. A slot missed while the Mac was powered
 off or logged out is not made up.
 
 ## Commands

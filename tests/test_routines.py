@@ -32,6 +32,16 @@ class Schedule(unittest.TestCase):
                          [{"Day": 1, "Hour": 9, "Minute": 0}, {"Day": 15, "Hour": 9, "Minute": 0}])
         self.assertEqual(R.parse_schedule("hourly :15"), [{"Minute": 15}])
 
+    def test_hourly_window(self):
+        got = R.parse_schedule("hourly :15 08-22")
+        self.assertEqual(len(got), 15)
+        self.assertEqual((got[0], got[-1]), ({"Hour": 8, "Minute": 15}, {"Hour": 22, "Minute": 15}))
+        self.assertEqual([iv["Hour"] for iv in R.parse_schedule("hourly :00 22-01")], [22, 23, 0, 1])
+        now = datetime(2026, 9, 18, 23, 0)
+        self.assertEqual(R.next_run(R.parse_schedule("hourly :15 08-22"), now), datetime(2026, 9, 19, 8, 15))
+        with self.assertRaises(R.ScheduleError):
+            R.parse_schedule("hourly :15 08-25")
+
     def test_rejects(self):
         for bad in ("daily", "funday 09:00", "daily 25:00", "09:00", "monthly 40 09:00", "0 9 * * *"):
             with self.assertRaises(R.ScheduleError, msg=bad):

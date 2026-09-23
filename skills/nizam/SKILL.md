@@ -180,9 +180,10 @@ The prompt: numbered steps, the files to read first, the exact output wanted, an
 ```
 
 - `schedule`: `manual` (run on demand only, the default), `daily 09:30, 16:00`, day lists and ranges
-  `mon, wed 08:00` / `sat-thu 09:30` (ranges wrap), `monthly 1 09:00`, `hourly :15`. Join clauses with
-  `;`. Local time. No cron syntax.
-- `timeout`: `90s`, `30m`, `2h`; default 30m. The run is killed at the limit and reported as timed out.
+  `mon, wed 08:00` / `sat-thu 09:30` (ranges wrap), `monthly 1 09:00`, `hourly :15`, `hourly :15 08-22`
+  (those hours only). Join clauses with `;`. Local time. No cron syntax. A closed laptop on battery
+  sleeps through its slots and runs them late, so keep long or hourly routines to waking hours.
+- `timeout`: `90s`, `30m`, `2h`; default 30m. Counts awake time only. The run is killed at the limit and reported as timed out.
 - `allowed_tools` / `disallowed_tools`: a headless run cannot answer a permission prompt, so every
   tool the routine needs must be listed (least privilege: only those). `model` and
   `permission_mode` are optional. `enabled: false` pauses it without deleting the file.
