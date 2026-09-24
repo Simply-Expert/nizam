@@ -559,16 +559,29 @@ function renderRoutine(d, r) {
       ${L && L.session_id ? `<button data-rt="open" title="Resume the last run as a normal session, with its full context">Open last run</button>` : ''}
       ${r.kind === 'script' && L && ['errored', 'timed_out'].includes(r.status) ? `<button id="rtFix" title="Open a session in this agent with the failure as the first prompt">Start session to fix</button>` : ''}
       ${r.failing ? `<button data-rt="ack" title="Stop counting this failure; the next failed run counts again">Dismiss</button>` : ''}
+      <button class="quiet" id="rtDel" title="Open a session in this agent that deletes this routine and its schedule">Delete…</button>
     </div>
     ${L ? `<div class="msg">${esc(L.summary || '(no output)')}</div>` : `<div class="msg muted">No run recorded yet.</div>`}
     ${r.kind === 'script' ? `<div class="prompt" style="margin-top:12px">$ ${esc(r.command)}${r.about ? '\n' + esc(r.about) : ''}</div>` : ''}
     <div class="path">${esc(r.file)} · the agent edits this file${L && L.log ? `<br>${esc(L.log)}` : ''}</div>`;
-  if ($('#rtFix')) $('#rtFix').addEventListener('click', async () => {
+  const startSession = async (prompt, title) => {
     const last = DATA.prefs.last_start || {};
-    const prompt = `The script routine "${r.name}" (${r.file}) ${r.status === 'timed_out' ? 'timed out' : 'failed'} on its last run (${L.when}).\n\nCommand: ${r.command}\nFull log: ${L.log}\n\nEnd of its output:\n${(L.summary || '').slice(-1200)}\n\nFind the cause and fix it, then run \`nizam run ${r.file}\` to confirm it completes.`;
-    const res = await api('/api/start', {cwd: r.cwd, prompt, permission_mode: last.permission_mode || 'acceptEdits', title: `Fix routine: ${r.name}`});
+    const res = await api('/api/start', {cwd: r.cwd, prompt, permission_mode: last.permission_mode || 'acceptEdits', title});
     if (res.error) { toast(res.error); return; }
     toast('Session started', true); setTimeout(() => refresh(true), 1500);
+  };
+  if ($('#rtFix')) $('#rtFix').addEventListener('click', () => startSession(
+    `The script routine "${r.name}" (${r.file}) ${r.status === 'timed_out' ? 'timed out' : 'failed'} on its last run (${L.when}).\n\nCommand: ${r.command}\nFull log: ${L.log}\n\nEnd of its output:\n${(L.summary || '').slice(-1200)}\n\nFind the cause and fix it, then run \`nizam run ${r.file}\` to confirm it completes.`,
+    `Fix routine: ${r.name}`));
+  $('#rtDel').addEventListener('click', async () => {
+    if (!await confirmBox(`Delete the routine "${r.name}"?`, 'This starts a session in the agent that deletes the routine file, removes its schedule, and cleans up anything that points to it.', 'Start session')) return;
+    startSession(`Delete the routine "${r.name}" (${r.file}).\n\n`
+      + `1. Delete the file (\`git rm\` in a git repo).\n`
+      + `2. Run \`nizam routines sync\` so launchd drops its schedule, then check \`nizam routines list\` no longer shows it.\n`
+      + `3. Search this agent for anything that names it (CLAUDE.md, READMEs, other routines, scripts) and update it.${r.kind === 'script' ? ` If \`${r.command}\` or its env file is used by nothing else, ask me before deleting it.` : ''}\n`
+      + (r.area ? `4. Add a dated line to the ${r.area} area's journal saying the routine was deleted.\n` : '')
+      + `\nThen report what was removed.`,
+      `Delete routine: ${r.name}`);
   });
   d.querySelectorAll('[data-rt]').forEach(el => el.addEventListener('click', async () => {
     const act = el.dataset.rt, res = await api(`/api/routines/${act}`, {id: r.id});
