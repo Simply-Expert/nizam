@@ -35,6 +35,10 @@ TAIL_BYTES = 256 * 1024
 MIN_VERSION = (2, 1, 158)
 TESTED_VERSION = (2, 1, 278)   # newest Claude Code this was run against
 PENDING_TOOLS = {"ExitPlanMode": "Plan to review", "AskUserQuestion": "Asking you"}
+TASK_ENDED = {"completed", "failed", "killed", "stopped"}
+_NOTIFICATION = re.compile(r"<task-notification>(.*?)</task-notification>", re.S)
+_TASK_ID = re.compile(r"<task-id>([\w-]+)</task-id>")
+_STATUS = re.compile(r"<status>(\w+)</status>")
 
 HOOK_EVENTS = {
     "SessionStart": None,
@@ -138,6 +142,33 @@ def _strip_system_noise(text: str) -> str:
     return text.strip()
 
 
+def _track_task(t: Transcript, r: dict, ts: float) -> None:
+    if r.get("backgroundTaskId"):
+        t.background[r["backgroundTaskId"]] = ("shell", ts)
+    elif r.get("isAsync") and r.get("agentId"):
+        t.background[r["agentId"]] = ("agent", ts)
+    elif r.get("taskId"):
+        t.background[r["taskId"]] = ("monitor" if "persistent" in r or "timeoutMs" in r else "task", ts)
+    elif r.get("task_id") and str(r.get("message", "")).startswith("Successfully stopped"):
+        t.background.pop(r["task_id"], None)
+
+
+def _end_tasks(t: Transcript, e: dict) -> None:
+    # Monitor events arrive as notifications too; only the final one carries a <status>.
+    if e.get("type") == "user":
+        text = _user_text((e.get("message") or {}).get("content")) or ""
+    elif e.get("type") == "attachment":
+        text = str((e.get("attachment") or {}).get("prompt") or "")
+    elif e.get("type") == "queue-operation":
+        text = str(e.get("content") or "")
+    else:
+        return
+    for block in _NOTIFICATION.findall(text):
+        tid, status = _TASK_ID.search(block), _STATUS.search(block)
+        if tid and status and status.group(1) in TASK_ENDED:
+            t.background.pop(tid.group(1), None)
+
+
 def read_transcript(path: Path, full: bool = False) -> Transcript | None:
     try:
         st = path.stat()
@@ -151,12 +182,14 @@ def read_transcript(path: Path, full: bool = False) -> Transcript | None:
                 head = f.read(64 * 1024)
                 f.seek(-TAIL_BYTES, os.SEEK_END)
                 tail = f.read()
-                blob = head + b"\n" + tail[tail.find(b"\n") + 1:]
+                # A launch in the head may have ended in the skipped middle, so only the tail tracks tasks.
+                lines = [(raw, False) for raw in head.split(b"\n")] + \
+                        [(raw, True) for raw in tail[tail.find(b"\n") + 1:].split(b"\n")]
             else:
-                blob = f.read()
+                lines = [(raw, True) for raw in f.read().split(b"\n")]
     except OSError:
         return None
-    for raw in blob.split(b"\n"):
+    for raw, track in lines:
         if not raw.strip():
             continue
         try:
@@ -170,6 +203,8 @@ def read_transcript(path: Path, full: bool = False) -> Transcript | None:
         if typ in ("custom-title", "ai-title"):
             t.custom_title = e.get("customTitle") or e.get("aiTitle") or e.get("title") or t.custom_title
             continue
+        if track and b"task-notification" in raw:
+            _end_tasks(t, e)
         if typ not in ("user", "assistant") or e.get("isSidechain"):
             continue
         t.entries += 1
@@ -181,6 +216,8 @@ def read_transcript(path: Path, full: bool = False) -> Transcript | None:
             t.last_ts = ts
         msg = e.get("message") or {}
         content = msg.get("content")
+        if track and isinstance(e.get("toolUseResult"), dict):
+            _track_task(t, e["toolUseResult"], ts or 0.0)
         if typ == "user":
             txt = _user_text(content)
             if txt is not None:

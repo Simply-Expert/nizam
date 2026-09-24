@@ -150,6 +150,36 @@ class WithoutHooks(BoardCase):
         self.chat(entries=[fx.user("a", at - 9, self.cwd), fx.assistant("b", at - 5, self.cwd), fx.user("c", at, self.cwd)])
         self.assertEqual(self.state_of(), ("working", "Working", ""))
 
+    def waiting_on(self, *results, text="Kicked them off."):
+        at = self.now - 10
+        self.chat(entries=[fx.user("go", at - 5, self.cwd)] +
+                  [fx.launched(r, at - 4, self.cwd) for r in results] + [fx.assistant(text, at, self.cwd)])
+
+    def test_waiting_on_background_work(self):
+        self.waiting_on({"isAsync": True, "agentId": "a1"}, {"isAsync": True, "agentId": "a2"},
+                        {"backgroundTaskId": "b1"})
+        self.live()
+        self.assertEqual(self.state_of(), ("working", "Waiting on 2 agents · 1 shell", ""))
+        self.assertEqual(self.row()["waiting"], "2 agents · 1 shell")
+
+    def test_waiting_but_asking_is_your_turn(self):
+        self.waiting_on({"taskId": "m1", "persistent": True}, text="Should I also deploy?")
+        self.live()
+        s = self.row()
+        self.assertEqual((s["bucket"], s["waiting"], s["question"]), ("inbox", "1 monitor", True))
+
+    def test_waiting_is_never_stuck(self):
+        self.waiting_on({"isAsync": True, "agentId": "a1"})
+        self.live("busy", age=630)
+        self.assertEqual(self.state_of(), ("working", "Working", ""))
+
+    def test_background_work_dies_with_the_session(self):
+        self.waiting_on({"backgroundTaskId": "b1"})
+        fx.write_runtime(self.home, SID, self.cwd, fx.dead_pid(), updated=self.now - 5)
+        self.assertEqual((self.row()["bucket"], self.row()["waiting"]), ("closed", ""))
+        fx.write_runtime(self.home, SID, self.cwd, os.getpid(), started=self.now - 2)   # resumed later
+        self.assertEqual(self.state_of(), ("inbox", "Turn finished", ""))
+
     def test_dead_process_is_closed(self):
         self.chat()
         fx.write_runtime(self.home, SID, self.cwd, fx.dead_pid(), "busy")

@@ -50,6 +50,7 @@ textarea { min-height: 84px; resize: vertical; }
 .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--done-bg); color: var(--muted); }
 .tag.live { background: var(--inbox-bg); color: var(--inbox); }
 .tag.q { background: var(--needs-bg); color: var(--needs); }
+.tag.bgw { background: var(--working-bg); color: var(--working); }
 
 /* ---- sidebar ---- */
 aside { background: var(--panel); border-right: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; }
@@ -102,6 +103,7 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .item.closed:hover .agotxt { display: none; }
 .item .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .ago { color: var(--muted); font-size: 12px; }
+.item .bgw { color: var(--working); font-size: 11px; margin-right: 6px; white-space: nowrap; }
 .item .where { grid-column: 2 / 4; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .p { grid-column: 2 / 4; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .p.why { color: var(--needs); }
@@ -403,10 +405,12 @@ function routineRow(r, showAgent) {
   const shown = r.failing ? r.status : (r.status === 'running' || r.status === 'completed' ? r.status : 'never');
   return `<div class="item rt ${off?'off':''} ${CUR===r.id?'on':''}" data-id="${r.id}"><span class="dot rt ${shown}">${RT_DOT[shown]}</span><span class="t">${esc(r.name)}</span><span class="ago">${right}</span>${where?`<span class="where">${where}</span>`:''}<span class="p ${r.failing||r.error?'why':''}">${esc(line)}</span></div>`;
 }
+function dotFor(s) { return s.bucket === 'working' && s.waiting && s.label !== 'Working' ? '◌' : DOT[s.bucket]; }
 function sessionRow(s) {
   const where = SEL.agent ? (s.area ? esc(s.area) : '') : esc(s.agent_name) + (s.area ? ' › ' + esc(s.area) : '');
   const p = s.bucket === 'needs' && s.detail ? `<span class="p why">${esc(s.detail)}</span>` : `<span class="p">${esc(lastPara(s.preview))}</span>`;
-  return `<div class="item ${s.bucket} ${s.starred?'starred':''} ${CUR===s.id?'on':''}" data-id="${s.id}" title="Double-click or Enter to ${s.live?'jump to':'resume'}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span><span class="t">${esc(s.title)}</span><span class="ago"><span class="agotxt">${esc(s.ago)}</span>${s.bucket==='closed'?`<button class="rowdone" data-done="${s.id}" title="Mark done">Done ✓</button>`:''}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
+  const bg = s.waiting ? `<span class="bgw" title="Still running in the background: ${esc(s.waiting)}">⧗ ${esc(s.waiting)}</span>` : '';
+  return `<div class="item ${s.bucket} ${s.starred?'starred':''} ${CUR===s.id?'on':''}" data-id="${s.id}" title="Double-click or Enter to ${s.live?'jump to':'resume'}"><span class="dot ${s.bucket}">${dotFor(s)}</span><span class="t">${esc(s.title)}</span><span class="ago">${bg}<span class="agotxt">${esc(s.ago)}</span>${s.bucket==='closed'?`<button class="rowdone" data-done="${s.id}" title="Mark done">Done ✓</button>`:''}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
 }
 function renderList() {
   const agent = agentOf(SEL.agent);
@@ -591,8 +595,8 @@ function renderDetail() {
   d.innerHTML = `
     <button class="back quiet" id="back">‹ Back</button>
     <h1><button class="star ${s.starred?'on':''}" data-act="star" title="${s.starred?'Unstar':'Star'} (s)"></button><span class="t" title="Click to rename">${esc(s.title)}</span></h1>
-    <div class="meta"><b>${esc(s.agent_name)}</b>${s.area?` › ${esc(s.area)}`:''} · <span class="ago">${esc(s.ago)}</span> ago ${s.live?'<span class="tag live">live</span>':'<span class="tag">exited</span>'}${s.question?'<span class="tag q">asks something</span>':''}${(!s.hooked && s.live)?'<span class="tag" title="No hook events yet; state inferred from the transcript">inferred</span>':''}</div>
-    <div class="state ${s.bucket}"><span class="dot ${s.bucket}">${DOT[s.bucket]}</span>${esc(s.label)}</div>
+    <div class="meta"><b>${esc(s.agent_name)}</b>${s.area?` › ${esc(s.area)}`:''} · <span class="ago">${esc(s.ago)}</span> ago ${s.live?'<span class="tag live">live</span>':'<span class="tag">exited</span>'}${s.question?'<span class="tag q">asks something</span>':''}${s.waiting?`<span class="tag bgw">⧗ ${esc(s.waiting)} running</span>`:''}${(!s.hooked && s.live)?'<span class="tag" title="No hook events yet; state inferred from the transcript">inferred</span>':''}</div>
+    <div class="state ${s.bucket}"><span class="dot ${s.bucket}">${dotFor(s)}</span>${esc(s.label)}</div>
     ${s.detail ? `<div class="why">${esc(s.detail)}</div>` : ''}
     <div class="actions"><button class="primary" data-act="open">${s.live?'Jump to':'Resume'}</button>${doneBtn}</div>
     ${s.last_prompt ? `<div class="prompt">You: ${esc(s.last_prompt)}</div>` : ''}

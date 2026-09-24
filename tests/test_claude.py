@@ -85,6 +85,32 @@ class Transcripts(Case):
         self.assertEqual((t.first_user_prompt, t.last_user_prompt, t.last_assistant_text),
                          ("the first prompt", "the last prompt", "the end"))
 
+    def test_background_work_until_it_reports_back(self):
+        t0 = self.now - 100
+        t = self.read([
+            fx.user("go", t0, self.cwd),
+            fx.launched({"backgroundTaskId": "bsh1"}, t0 + 1, self.cwd),
+            fx.launched({"backgroundTaskId": "bsh2"}, t0 + 2, self.cwd),
+            fx.launched({"isAsync": True, "status": "async_launched", "agentId": "a1"}, t0 + 3, self.cwd),
+            fx.launched({"taskId": "mon1", "timeoutMs": 600000, "persistent": False}, t0 + 4, self.cwd),
+            fx.launched({"taskId": "wf1"}, t0 + 5, self.cwd),
+            fx.notification("bsh1", t0 + 6, self.cwd),
+            fx.notification("a1", t0 + 7, self.cwd, status="failed", queued=True),
+            fx.notification("mon1", t0 + 8, self.cwd, status=None),
+            fx.launched({"task_id": "wf1", "message": "Successfully stopped task: wf1"}, t0 + 9, self.cwd),
+            fx.assistant("waiting", t0 + 10, self.cwd),
+        ])
+        self.assertEqual({k: v[0] for k, v in t.background.items()}, {"bsh2": "shell", "mon1": "monitor"})
+        self.assertAlmostEqual(t.background["bsh2"][1], t0 + 2, places=3)
+
+    def test_a_launch_in_the_skipped_middle_is_not_tracked(self):
+        t0 = self.now - 5000
+        filler = "x" * 2000
+        entries = [fx.user("go", t0, self.cwd), fx.launched({"backgroundTaskId": "early"}, t0 + 1, self.cwd)]
+        entries += [fx.assistant(f"{i} {filler}", t0 + i, self.cwd) for i in range(2, 400)]
+        entries += [fx.launched({"backgroundTaskId": "late"}, t0 + 400, self.cwd)]
+        self.assertEqual(list(self.read(entries).background), ["late"])
+
 
 class Runtimes(Case):
     def test_status_and_liveness(self):

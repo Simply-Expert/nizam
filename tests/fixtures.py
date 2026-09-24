@@ -60,6 +60,18 @@ def assistant(text: str, ts: float, cwd: str, tools: tuple = (), **extra) -> dic
             "message": {"role": "assistant", "content": content}, **extra}
 
 
+def launched(result: dict, ts: float, cwd: str) -> dict:
+    return user([{"type": "tool_result", "content": "started"}], ts, cwd, toolUseResult=result)
+
+
+def notification(task_id: str, ts: float, cwd: str, status: str | None = "completed", queued: bool = False) -> dict:
+    body = f"<task-notification>\n<task-id>{task_id}</task-id>\n" + \
+           (f"<status>{status}</status>\n" if status else "<event>tick</event>\n") + "</task-notification>"
+    if queued:
+        return {"type": "attachment", "timestamp": iso(ts), "attachment": {"type": "queued_command", "prompt": body}}
+    return user(body, ts, cwd)
+
+
 def write_transcript(home: Path, sid: str, cwd: str, entries: list, mtime: float | None = None) -> Path:
     d = home / ".claude" / "projects" / cwd.replace("/", "-")
     d.mkdir(parents=True, exist_ok=True)
@@ -70,11 +82,12 @@ def write_transcript(home: Path, sid: str, cwd: str, entries: list, mtime: float
     return path
 
 
-def write_runtime(home: Path, sid: str, cwd: str, pid: int, status: str = "idle", updated: float | None = None) -> None:
+def write_runtime(home: Path, sid: str, cwd: str, pid: int, status: str = "idle", updated: float | None = None,
+                  started: float = 0) -> None:
     d = home / ".claude" / "sessions"
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{pid}.json").write_text(json.dumps({
-        "pid": pid, "sessionId": sid, "cwd": cwd, "status": status,
+        "pid": pid, "sessionId": sid, "cwd": cwd, "status": status, "startedAt": int(started * 1000),
         "statusUpdatedAt": int((updated or time.time()) * 1000)}), encoding="utf-8")
 
 

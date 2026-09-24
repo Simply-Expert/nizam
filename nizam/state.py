@@ -264,6 +264,19 @@ def _looks_like_question(text: str) -> bool:
     return tail.endswith("?") or any(p in low for p in _QUESTION_PHRASES)
 
 
+_KINDS = ("agent", "shell", "monitor", "task")
+
+
+def _waiting(t: Transcript, rt: Runtime | None) -> str:
+    # Tasks from before this process started died with the one that ran them.
+    since = rt.started_at if rt else 0
+    counts = {k: 0 for k in _KINDS}
+    for kind, ts in t.background.values():
+        if ts >= since:
+            counts[kind if kind in counts else "task"] += 1
+    return " · ".join(f"{n} {k}{'s' if n > 1 else ''}" for k, n in counts.items() if n)
+
+
 def _title(t: Transcript, override: str | None) -> str:
     if override:
         return override
@@ -344,7 +357,9 @@ class Board:
                 self.persist.mark_done(sid, by="auto", at=last_activity + AUTO_DONE_AFTER)
                 done = done_map.get(sid)
 
-            bucket, label, detail = self._classify(now, t, rt, h, live, last_activity)
+            waiting = _waiting(t, rt) if live else ""
+            asks = _looks_like_question(t.last_assistant_text.strip())
+            bucket, label, detail = self._classify(now, t, rt, h, live, last_activity, waiting, asks)
             if done:
                 bucket, label = "done", ("Done" if done["by"] == "user" else "Auto-done")
             if bucket == "done" and now - done["at"] > DONE_VISIBLE_FOR:
@@ -373,7 +388,8 @@ class Board:
                 "started": t.first_ts or t.mtime,
                 "last_prompt": t.last_user_prompt[:300],
                 "preview": _preview(preview),
-                "question": _looks_like_question(preview) if bucket in ("inbox", "closed") else False,
+                "question": asks if bucket in ("inbox", "closed") else False,
+                "waiting": waiting,
                 "done": done,
                 "starred": sid in starred,
                 "hooked": h is not None,
@@ -419,7 +435,7 @@ class Board:
 
     @staticmethod
     def _classify(now, t: Transcript, rt: Runtime | None, h: HookState | None, live: bool,
-                  last_activity: float) -> tuple[str, str, str]:
+                  last_activity: float, waiting: str = "", asks: bool = False) -> tuple[str, str, str]:
         silent = now - last_activity
         if live and h and h.needs_label:
             return "needs", h.needs_label, h.needs_text
@@ -431,9 +447,12 @@ class Board:
         if not rt and not h and t.last_role == "user" and silent < STUCK_AFTER:
             busy = True
         if busy:
-            if silent > STUCK_AFTER:
+            if silent > STUCK_AFTER and not waiting:
                 return "needs", "Maybe stuck", f"No progress for {_ago(silent)}"
             return "working", "Working", ""
+        if live and waiting and not asks:
+            # Claude takes its next turn on its own when the work reports back.
+            return "working", f"Waiting on {waiting}", ""
         if live:
             return "inbox", "Turn finished", ""
         return "closed", "Closed", ""
