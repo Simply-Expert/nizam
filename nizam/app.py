@@ -22,6 +22,7 @@ from AppKit import (
     NSBackingStoreBuffered, NSMakePoint, NSScreen, NSFontWeightSemibold,
     NSImage, NSImageSymbolConfiguration, NSMutableAttributedString, NSTextAttachment,
     NSTrackingArea, NSMutableParagraphStyle, NSParagraphStyleAttributeName, NSWindow,
+    NSGraphicsContext, NSAffineTransform, NSZeroRect, NSCompositingOperationSourceOver,
 )
 from Foundation import NSURLRequest, NSPointInRect
 from WebKit import WKWebView, WKWebViewConfiguration, WKUserContentController
@@ -58,6 +59,7 @@ NSLineBreakByTruncatingTail = 4
 BADGE_H = 28
 LIST_W, LIST_ROW_H, LIST_HEAD_H, LIST_PAD, LIST_MAX = 300, 38, 26, 6, 10
 HOVER_LINGER_SECS = 0.3
+SPIN_SECS, SPIN_STEP = 1 / 30, 12
 LIMITS = "limits"
 UPDATE = "update"
 LIST_HEADS = {LIMITS: "Plan usage", UPDATE: "Update"}
@@ -79,17 +81,23 @@ def _shown(counts: dict) -> list[str]:
     return [k for k in SEGMENTS if counts[k] or k == "inbox"]
 
 
+def _symbol(symbol: str, color, font):
+    img = NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol, None)
+    if img is None:
+        return None
+    cfg = NSImageSymbolConfiguration.configurationWithPointSize_weight_(font.pointSize(), NSFontWeightSemibold)
+    cfg = cfg.configurationByApplyingConfiguration_(
+        NSImageSymbolConfiguration.configurationWithPaletteColors_([color]))
+    return img.imageWithSymbolConfiguration_(cfg)
+
+
 def _icon(symbol: str, glyph: str, color, font) -> NSMutableAttributedString:
     out = NSMutableAttributedString.alloc().init()
-    img = NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol, None)
+    img = _symbol(symbol, color, font)
     if img is None:
         out.appendAttributedString_(NSAttributedString.alloc().initWithString_attributes_(
             glyph, {NSFontAttributeName: font, NSForegroundColorAttributeName: color}))
     else:
-        cfg = NSImageSymbolConfiguration.configurationWithPointSize_weight_(font.pointSize(), NSFontWeightSemibold)
-        cfg = cfg.configurationByApplyingConfiguration_(
-            NSImageSymbolConfiguration.configurationWithPaletteColors_([color]))
-        img = img.imageWithSymbolConfiguration_(cfg)
         att = NSTextAttachment.alloc().init()
         att.setImage_(img)
         sz = img.size()
@@ -233,12 +241,15 @@ def _track_hover(view):
 
 
 class BadgeView(NSView):
-    """A draggable capsule showing the counts. Click toggles the popover; hovering a count lists what is behind it."""
+    """A draggable capsule showing the counts. Click toggles the popover, or updates on the update arrow;
+    hovering a count lists what is behind it."""
     delegate = objc.ivar()
     counts = objc.ivar()
     limits = objc.ivar()
     has_update = objc.ivar()
     _spans = objc.ivar()
+    _spin = objc.ivar()
+    _spin_timer = objc.ivar()
     _down = objc.ivar()
     _dragged = objc.ivar()
 
@@ -251,6 +262,7 @@ class BadgeView(NSView):
         self.limits = []
         self._dragged = False
         self._spans = []
+        self._spin = 0
         return self
 
     def acceptsFirstMouse_(self, event):
@@ -267,15 +279,58 @@ class BadgeView(NSView):
         if self.limits:
             out.append((LIMITS, _limits_segment(self.limits, font)))
         if self.has_update:
-            out.append((UPDATE, _icon("arrow.down.circle", "↓", NSColor.systemBlueColor(), font)))
+            symbol, glyph = ("arrow.triangle.2.circlepath", "↻") if self.delegate.updating else ("arrow.down.circle", "↓")
+            out.append((UPDATE, _icon(symbol, glyph, NSColor.systemBlueColor(), font)))
         return out
 
     @objc.python_method
-    def _hover(self, event):
+    def _span_at(self, event):
         x = self.convertPoint_fromView_(event.locationInWindow(), None).x
         for bucket, x0, x1 in self._spans:
             if x < x1:
-                return self.delegate.hover(bucket, x0)
+                return bucket, x0
+        return None, 0
+
+    @objc.python_method
+    def _hover(self, event):
+        bucket, x0 = self._span_at(event)
+        if bucket:
+            self.delegate.hover(bucket, x0)
+
+    @objc.python_method
+    def start_spin(self):
+        if self._spin_timer is None:
+            self._spin_timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                SPIN_SECS, self, "spin:", None, True)
+
+    def spin_(self, _timer):
+        if self.delegate.updating:
+            self._spin = (self._spin + SPIN_STEP) % 360
+        else:
+            self._spin_timer.invalidate()
+            self._spin_timer = None
+            self._spin = 0
+            self.delegate.resize_badge()
+        self.setNeedsDisplay_(True)
+
+    @objc.python_method
+    def _draw_spinning(self, x, width):
+        img = _symbol("arrow.triangle.2.circlepath", NSColor.systemBlueColor(),
+                      NSFont.systemFontOfSize_weight_(12, NSFontWeightSemibold))
+        if img is None:
+            return False
+        sz = img.size()
+        cx, cy = x + width / 2, self.bounds().size.height / 2
+        NSGraphicsContext.saveGraphicsState()
+        t = NSAffineTransform.transform()
+        t.translateXBy_yBy_(cx, cy)
+        t.rotateByDegrees_(-self._spin)
+        t.concat()
+        img.drawInRect_fromRect_operation_fraction_(
+            NSMakeRect(-sz.width / 2, -sz.height / 2, sz.width, sz.height),
+            NSZeroRect, NSCompositingOperationSourceOver, 1.0)
+        NSGraphicsContext.restoreGraphicsState()
+        return True
 
     def mouseEntered_(self, event):
         self._hover(event)
@@ -305,7 +360,8 @@ class BadgeView(NSView):
         spans = []
         for k, a in self.segments():
             sz = a.size()
-            a.drawAtPoint_(NSMakePoint(x, (b.size.height - sz.height) / 2))
+            if not (k == UPDATE and self._spin_timer is not None and self._draw_spinning(x, sz.width)):
+                a.drawAtPoint_(NSMakePoint(x, (b.size.height - sz.height) / 2))
             spans.append((k, x, x + sz.width + 6))
             x += sz.width + 12
         if spans:
@@ -330,6 +386,8 @@ class BadgeView(NSView):
     def mouseUp_(self, event):
         if self._dragged:
             self.delegate.badgeMoved_(None)
+        elif self._span_at(event)[0] == UPDATE:
+            self.delegate.startUpdate_(None)
         else:
             self.delegate.badgeClicked_(self)
 
@@ -570,9 +628,7 @@ class AppDelegate(NSObject):
         self.badge_view.counts = counts
         self.badge_view.limits = limits
         self.badge_view.has_update = bool(items[UPDATE])
-        self.badge.setContentSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
-        self.badge_view.setFrameSize_(NSSize(self.badge_view.desired_width(), BADGE_H))
-        self.badge_view.setNeedsDisplay_(True)
+        self.resize_badge()
         new_ids = set(needs_now) - self.seen_needs
         if self.seeded and new_ids:
             if len(new_ids) == 1:
@@ -595,7 +651,14 @@ class AppDelegate(NSObject):
                               "sub": "Updating…" if self.updating else f"You have {self.update_info['current']} · click to update"})
         if self.board.persist.data["prefs"].get("update_notified") != latest:
             self.board.persist.set_pref("update_notified", latest)
-            _notify("Nizam", f"{latest} is available. Right-click the badge to update.")
+            _notify("Nizam", f"{latest} is available. Click ↓ on the badge to update.")
+
+    @objc.python_method
+    def resize_badge(self):
+        w = self.badge_view.desired_width()
+        self.badge.setContentSize_(NSSize(w, BADGE_H))
+        self.badge_view.setFrameSize_(NSSize(w, BADGE_H))
+        self.badge_view.setNeedsDisplay_(True)
 
     @objc.python_method
     def _set_title(self, c):
@@ -855,6 +918,8 @@ class AppDelegate(NSObject):
         if self.updating or not self.update_info:
             return
         self.updating = True
+        self.resize_badge()
+        self.badge_view.start_spin()
         _notify("Nizam", f"Updating to {self.update_info['latest']}…")
 
         def work():
@@ -873,7 +938,7 @@ class AppDelegate(NSObject):
                 return
             if info["latest"]:
                 self.board.persist.set_pref("update_notified", info["latest"])
-                _notify("Nizam", f"{info['latest']} is available. Right-click the badge to update.")
+                _notify("Nizam", f"{info['latest']} is available. Click ↓ on the badge to update.")
             else:
                 _notify("Nizam", f"{info['current']} is up to date")
         threading.Thread(target=work, daemon=True).start()
