@@ -68,6 +68,7 @@ repo it was cloned from, to see whether a newer release exists.
 When one does, a blue arrow appears on the badge: click it, or right-click and choose *Update to
 vX.Y.Z*, or run `nizam update`. That moves the checkout to the newest tag, reinstalls the hooks and
 restarts the app. It never updates on its own, and it refuses when the checkout has local changes.
+[WHATSNEW.md](WHATSNEW.md) says what each release changed, in plain words.
 
 Manual install:
 
