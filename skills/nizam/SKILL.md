@@ -53,7 +53,8 @@ Turn an existing folder into an area by adding `INSTRUCTIONS.md` (seeded from an
 notes already there) and a journal if missing.
 
 ## `followup add <date> <what>`
-Follow-ups are dated, short-lived, one-off items that would otherwise be forgotten. The Nizam board
+Follow-ups are dated, one-off items that would otherwise be forgotten. Any date is fine, however far
+out: the board keeps far-off items quietly in the agent's list and brings them up when due. The Nizam board
 reads every `FOLLOWUPS.md` it finds (agent root and inside areas), merges them, flags overdue items,
 filters by area, and can start a session from one. It never writes these files; you do.
 
@@ -69,9 +70,9 @@ filters by area, and can start a session from one. It never writes these files; 
 1. Create the chosen `FOLLOWUPS.md` if missing, with this header:
 
    ```markdown
-   # Follow-ups — dated, short-lived, one-off
+   # Follow-ups — dated, one-off
 
-   Nothing recurring (that is a routine: `routines/<name>.md`). Nothing further out than ~14 days.
+   Nothing recurring (that is a routine: `routines/<name>.md`). Any date is fine, however far out.
    Delete on completion; delete when more than 7 days stale or move it to a real plan.
 
    ---
@@ -88,6 +89,10 @@ filters by area, and can start a session from one. It never writes these files; 
    from the agent root when the name alone is ambiguous (`[campaigns/sept-2026]`). Run `area list`
    if unsure. Omit the tag for items that belong to the agent as a whole. A tagged item shows under
    that area's chip on the board, and "Start session" opens in that area's folder.
+
+Older files may still say "Nothing further out than ~14 days" (or similar) in their header. That
+limit was dropped: never refuse or postpone an item because of it. When you edit such a file,
+replace that sentence with "Any date is fine, however far out." and change nothing else.
 
 ## `followup tag`
 Go through the untagged items in `FOLLOWUPS.md` and add the `[area]` tag to each one that clearly
