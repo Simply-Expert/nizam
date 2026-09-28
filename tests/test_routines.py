@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime
 from pathlib import Path
 
@@ -68,6 +69,20 @@ class Outcome(unittest.TestCase):
         self.assertEqual(R.decide_status(False, 0, True, "complete"), "errored")
         self.assertEqual(R.decide_status(False, 0, False, None), "incomplete")
         self.assertEqual(R.decide_status(False, 0, False, "complete"), "completed")
+
+    def test_resumed_session_settles_the_run(self):
+        runs = Path(tempfile.mkdtemp()) / "runs.jsonl"
+        with mock.patch.object(R, "RUNS_FILE", runs), mock.patch.object(R, "ROUTINES_DIR", runs.parent):
+            R.record({"run_id": "a", "routine": "g", "status": "incomplete", "summary": "timeout", "ended": 100.0})
+            run = R.runs_index()["last"]["g"]
+            R.settle_resumed(run, "OUTCOME: INCOMPLETE - still down", 90.0)
+            R.settle_resumed(run, "All clear now.", 200.0)
+            self.assertEqual(R.runs_index()["last"]["g"]["summary"], "timeout")
+            R.settle_resumed(run, "OUTCOME: COMPLETE\n\nAll clear now.", 200.0)
+            run = R.runs_index()["last"]["g"]
+            self.assertEqual((run["status"], run["summary"]), ("completed", "All clear now."))
+            R.settle_resumed(run, "OUTCOME: COMPLETE\n\nAll clear now.", 200.0)
+            self.assertEqual(len(runs.read_text().splitlines()), 2)
 
 
 class Definition(unittest.TestCase):

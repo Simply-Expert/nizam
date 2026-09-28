@@ -354,6 +354,8 @@ class Board:
                 continue          # stray sessions launched from /, ~ or a temp dir aren't an agent
             agent, area = agents_mod.resolve(cwd)
             live = bool(rt and rt.alive)
+            if sid in routine_sessions and t.last_role == "assistant":
+                routines_mod.settle_resumed(routine_sessions[sid], t.last_assistant_text, t.last_prompt_ts)
             if sid in routine_sessions and (not live or routines_mod.is_running(routine_sessions[sid])):
                 # A routine's headless run shows as the routine; it becomes a session once you resume it.
                 agents.setdefault(str(agent.root), agent.to_dict())

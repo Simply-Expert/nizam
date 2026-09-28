@@ -501,3 +501,22 @@ def decide_status(timed_out: bool, exit_code: int | None, is_error: bool, outcom
     if exit_code != 0 or is_error:
         return "errored"
     return "completed" if outcome == "complete" else "incomplete"
+
+
+def outcome_summary(outcome: str | None, reason: str, body: str) -> str:
+    if outcome == "complete":
+        return body
+    return (f"{reason}\n\n" if reason else "" if outcome else
+            "The run ended without an OUTCOME line, so nothing confirms the work was done.\n\n") + body
+
+
+def settle_resumed(run: dict, text: str, prompt_ts: float | None) -> None:
+    """A routine session you resumed and finished with an OUTCOME line replaces the run's verdict."""
+    if run.get("status") in ("running", "skipped") or not prompt_ts:
+        return
+    if prompt_ts <= max(run.get("ended") or 0, run.get("resumed") or 0):
+        return
+    outcome, reason, body = parse_outcome(text)
+    if outcome:
+        record({"run_id": run["run_id"], "status": "completed" if outcome == "complete" else "incomplete",
+                "summary": outcome_summary(outcome, reason, body)[-1500:], "resumed": prompt_ts})

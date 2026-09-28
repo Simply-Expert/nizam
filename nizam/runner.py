@@ -206,11 +206,8 @@ def _attempt(r: R.Routine, p: Provider, exe: str, env: dict, log: Path) -> dict:
         summary = _timeout_note(r, slept)
     elif status == "errored":
         summary = body or "\n".join(tail) or f"{p.cli} exited with code {proc.returncode}"
-    elif status == "incomplete":
-        summary = (f"{reason}\n\n" if reason else "" if outcome else
-                   "The run ended without an OUTCOME line, so nothing confirms the work was done.\n\n") + body
     else:
-        summary = body
+        summary = R.outcome_summary(outcome, reason, body)
     return {"status": status, "exit_code": proc.returncode, "session": sid, "summary": summary[-1500:],
             "duration": int(time.time() - started), "slept": int(slept),
             "cost": result.cost if result else None, "turns": result.turns if result else None}
