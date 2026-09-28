@@ -1,6 +1,6 @@
 ---
 name: nizam
-description: Nizam (نظام) — manage this agent's Areas and Follow-ups as seen on the Nizam board. Use when the user says "nizam area new X", "create an area for X", "list areas", "archive the X area", "promote this folder to an area", "add a follow-up", "remind us to X on <date>", "what follow-ups are due", "that follow-up is done", "nizam routine new X", "make this a nizam routine", "migrate/move this launchd job (or cron job) to nizam routines", "run this script on a schedule with nizam", "list this agent's routines", "why did the X routine fail", "any requests?", "check requests from other agents", "hand this to the X agent", "leave a request for X", "let agent X send requests to agent Y", "which agents can this one write to", or asks where a topic's instructions and journal should live. An Area is a sub-folder carrying INSTRUCTIONS.md (durable rules) and JOURNAL-<year>.md (dated log). Folders without INSTRUCTIONS.md (data, scripts, shared) are not areas. A Routine is routines/<name>.md: a recurring headless run on this Mac, scheduled by launchd. Not for Claude Code's own cloud routines (/schedule) or /loop.
+description: Nizam (نظام) — manage this agent's Areas and Follow-ups as seen on the Nizam board. Use when the user says "nizam area new X", "create an area for X", "list areas", "archive the X area", "promote this folder to an area", "add a follow-up", "remind us to X on <date>", "what follow-ups are due", "that follow-up is done", "remind me about this at 1:30", "bring this session back tomorrow at 9", "nizam routine new X", "make this a nizam routine", "migrate/move this launchd job (or cron job) to nizam routines", "run this script on a schedule with nizam", "list this agent's routines", "why did the X routine fail", "any requests?", "check requests from other agents", "hand this to the X agent", "leave a request for X", "let agent X send requests to agent Y", "which agents can this one write to", or asks where a topic's instructions and journal should live. An Area is a sub-folder carrying INSTRUCTIONS.md (durable rules) and JOURNAL-<year>.md (dated log). Folders without INSTRUCTIONS.md (data, scripts, shared) are not areas. A Routine is routines/<name>.md: a recurring headless run on this Mac, scheduled by launchd. Not for Claude Code's own cloud routines (/schedule) or /loop.
 ---
 
 # Nizam
@@ -103,6 +103,29 @@ ask whether to delete it or move it into a plan.
 ## `followup done <title or date>`
 Find the item in whichever file holds it. Write the outcome where it belongs (the area's journal, a plan's status log), then delete the item
 from `FOLLOWUPS.md`. The file is a queue, not a record.
+
+## `remind <when>`: bring this conversation back at a time
+A reminder is not a follow-up. It puts **this session** back in front of the user at a clock time:
+the board files the session under *Later*, then moves it to *Needs you* with a notification when the
+time comes. Nothing is written into the agent's files, and no new session is started.
+
+- **Reminder**: the user wants to come back to *this conversation*, usually later today or this
+  week ("remind me about this at 1:30", "bring this back tomorrow morning", "ping me here in an
+  hour"). Run `nizam remind <when>`.
+- **Follow-up**: work the agent owes on a *date*, picked up cold by a fresh session ("remind us to
+  chase the invoice on Friday"). Use `followup add`.
+- If you can't tell which one they mean, ask. Never set a reminder the user did not ask for.
+
+```
+nizam remind 1:30pm          # also: 14:00, +45m, in 2h, tomorrow 9am, fri 10:00
+nizam remind                 # show this session's reminder
+nizam remind off             # clear it
+```
+
+It finds the current session on its own. Reply with the time it confirms. It clears itself when the
+user writes to the session again, jumps back to it once it is due, or marks it done. It only works
+while the Nizam app is running, and only up to a week ahead; for anything further out, offer a
+follow-up.
 
 ## Rules
 - Never put dated events in INSTRUCTIONS.md, and never leave settled rules only in the journal.

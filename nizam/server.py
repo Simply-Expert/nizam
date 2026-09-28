@@ -12,9 +12,10 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from . import terminal
+from . import reminders
 from .agents import display_path, load_agent
 from .paths import PORT_FILE, ensure_dirs
-from .state import Board
+from .state import LOOKBACK, Board
 
 UI_DIR = Path(__file__).parent / "ui"
 DEFAULT_PORT = 7331
@@ -117,8 +118,24 @@ class Handler(BaseHTTPRequestHandler):
                 b.persist.rename(sid, str(body.get("name", "")))
             elif action == "star":
                 b.persist.star(sid, not s["starred"] if body.get("on") is None else bool(body["on"]))
+            elif action == "remind":
+                now = time.time()
+                try:
+                    at = reminders.parse(str(body.get("when", "")), now)
+                except ValueError as e:
+                    return self._json({"error": str(e)[:1].upper() + str(e)[1:]}, 400)
+                if at is not None and at > s["last_activity"] + LOOKBACK - 3600:
+                    return self._json({"error": "This session leaves the board before then; add a follow-up instead"}, 400)
+                if at is not None and s["bucket"] == "done":
+                    b.persist.reopen(sid)
+                b.persist.remind(sid, at)
+                b.invalidate()
+                return self._json({"ok": True, "at": at, "label": at and reminders.label(at, now),
+                                   "spoken": at and reminders.spoken(at, now)})
             elif action == "open":
                 ok = terminal.open_session(s, launcher, bool(body.get("paste")))
+                if ok and s["remind_due"]:
+                    b.persist.remind(sid, None)
                 b.invalidate()
                 return self._json({"ok": ok})
             else:

@@ -46,11 +46,12 @@ textarea { min-height: 84px; resize: vertical; }
 .cnt .f { background: var(--due-bg); color: var(--due); }
 .cnt .q { background: var(--accent-bg); color: var(--accent); }
 .dot { font-size: 11px; width: 14px; display: inline-block; text-align: center; }
-.dot.needs { color: var(--needs); } .dot.working { color: var(--working); } .dot.inbox { color: var(--inbox); } .dot.closed { color: var(--muted); } .dot.done { color: var(--done); }
+.dot.needs { color: var(--needs); } .dot.working { color: var(--working); } .dot.inbox { color: var(--inbox); } .dot.closed { color: var(--muted); } .dot.done { color: var(--done); } .dot.later { color: var(--due); }
 .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--done-bg); color: var(--muted); }
 .tag.live { background: var(--inbox-bg); color: var(--inbox); }
 .tag.q { background: var(--needs-bg); color: var(--needs); }
 .tag.bgw { background: var(--working-bg); color: var(--working); }
+.tag.rem { background: var(--due-bg); color: var(--due); } .tag.rem.due { background: var(--needs-bg); color: var(--needs); }
 
 /* ---- sidebar ---- */
 aside { background: var(--panel); border-right: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; }
@@ -86,7 +87,7 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .chip b { margin-left: 3px; color: var(--inbox); }
 .chip.agentchip { display: none; }
 .lsec { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); padding: 12px 12px 4px; font-weight: 600; }
-.lsec.needs { color: var(--needs); } .lsec.working { color: var(--working); } .lsec.inbox { color: var(--inbox); } .lsec.closed { color: var(--muted); } .lsec.done { color: var(--done); }
+.lsec.needs { color: var(--needs); } .lsec.working { color: var(--working); } .lsec.inbox { color: var(--inbox); } .lsec.closed { color: var(--muted); } .lsec.later { color: var(--due); } .lsec.done { color: var(--done); }
 .lsec span { font-weight: 500; }
 .item { display: grid; grid-template-columns: 16px 1fr auto; gap: 3px 8px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--line); }
 .item:hover { background: var(--hover); }
@@ -104,6 +105,8 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .item .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .ago { color: var(--muted); font-size: 12px; }
 .item .bgw { color: var(--working); font-size: 11px; margin-right: 6px; white-space: nowrap; }
+.item .rem { color: var(--due); font-size: 11px; margin-right: 6px; white-space: nowrap; } .item .rem.due { color: var(--needs); font-weight: 600; }
+.item.later .agotxt { display: none; }
 .item .where { grid-column: 2 / 4; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .p { grid-column: 2 / 4; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .p.why { color: var(--needs); }
@@ -133,7 +136,7 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .detail h1 .t:hover { color: var(--accent); }
 .detail .meta { color: var(--muted); font-size: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .detail .state { margin: 12px 0; display: flex; gap: 8px; align-items: center; font-weight: 600; }
-.detail .state.needs { color: var(--needs); } .detail .state.working { color: var(--working); } .detail .state.inbox { color: var(--inbox); } .detail .state.closed { color: var(--muted); } .detail .state.done { color: var(--done); }
+.detail .state.needs { color: var(--needs); } .detail .state.working { color: var(--working); } .detail .state.inbox { color: var(--inbox); } .detail .state.closed { color: var(--muted); } .detail .state.later { color: var(--due); } .detail .state.done { color: var(--done); }
 .detail .why { background: var(--needs-bg); padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; max-width: 820px; }
 .detail .actions { display: flex; gap: 8px; margin: 12px 0 14px; flex-wrap: wrap; }
 .detail .msg { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; white-space: pre-wrap; line-height: 1.55; max-width: 820px; overflow-wrap: anywhere; }
@@ -157,6 +160,8 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .modal .note { font-size: 11px; color: var(--muted); margin-top: 4px; }
 .modal .note:empty { display: none; }
 .modal .cmd { font-family: var(--mono); font-size: 11px; color: var(--muted); background: var(--bg); padding: 6px 8px; border-radius: 6px; word-break: break-all; }
+.picks { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+#remErr { color: var(--needs); font-size: 12px; }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--needs); color: #fff; padding: 8px 14px; border-radius: 8px; z-index: 30; display: none; }
 
 /* ---- narrow: single list, detail slides over ---- */
@@ -184,6 +189,15 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
     <h3 id="askTitle"></h3>
     <div class="f"><input id="askInput" type="text"></div>
     <div class="foot"><span id="askHint" style="flex:1;color:var(--muted);font-size:12px"></span><button id="askCancel">Cancel</button><button class="primary" id="askOk">Save</button></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="remind">
+  <div class="modal" style="width:440px">
+    <h3>Come back to this session at…</h3>
+    <div class="picks"><button data-when="+30m">In 30 min</button><button data-when="+1h">In 1 hour</button><button data-when="+3h">In 3 hours</button><button data-when="tomorrow 9am">Tomorrow 9 AM</button></div>
+    <div class="f"><input id="remInput" type="text" placeholder="1:30pm · 14:00 · +45m · tomorrow 9am · fri 10:00" spellcheck="false"><div class="note" id="remErr"></div></div>
+    <div class="foot"><button id="remClear">Clear reminder</button><span style="flex:1"></span><button id="remCancel">Cancel</button><button class="primary" id="remOk">Set</button></div>
   </div>
 </div>
 
@@ -224,9 +238,9 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 <script>
 const $ = (s, el=document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const ORDER = {needs: 0, working: 1, inbox: 2, closed: 3, done: 4};
-const SECTION = {needs: 'Needs you', working: 'Working', inbox: 'Your turn', closed: 'Closed', done: 'Done'};
-const DOT = {needs: '●', working: '◐', inbox: '●', closed: '○', done: '✓'};
+const ORDER = {needs: 0, working: 1, inbox: 2, later: 3, closed: 4, done: 5};
+const SECTION = {needs: 'Needs you', working: 'Working', inbox: 'Your turn', closed: 'Closed', later: 'Later', done: 'Done'};
+const DOT = {needs: '●', working: '◐', inbox: '●', closed: '○', later: '◷', done: '✓'};
 function load(k, d) { try { const v = localStorage.getItem('nizam.'+k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function save(k, v) { try { localStorage.setItem('nizam.'+k, JSON.stringify(v)); } catch {} }
 
@@ -240,7 +254,7 @@ async function api(path, body) {
   const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)} : {});
   return r.json();
 }
-function busyEditing() { return DRAG !== null || $('#ask').classList.contains('open') || $('#confirm').classList.contains('open') || $('#ctx').classList.contains('open') || $('#modal').classList.contains('open'); }
+function busyEditing() { return DRAG !== null || $('#ask').classList.contains('open') || $('#confirm').classList.contains('open') || $('#remind').classList.contains('open') || $('#ctx').classList.contains('open') || $('#modal').classList.contains('open'); }
 async function refresh(force) {
   try {
     const d = await api('/api/board');
@@ -256,7 +270,7 @@ function touchAgos() {
   for (const s of DATA.sessions) { const el = document.querySelector(`.item[data-id="${s.id}"] .agotxt`); if (el && el.textContent !== s.ago) el.textContent = s.ago; }
 }
 
-function counts(list) { const c = {needs:0, working:0, inbox:0, closed:0, done:0}; for (const s of list) c[s.bucket]++; return c; }
+function counts(list) { const c = {needs:0, working:0, inbox:0, closed:0, later:0, done:0}; for (const s of list) c[s.bucket]++; return c; }
 function badges(c, late, reqs) { return `<span class="cnt">${reqs?`<b class="q" title="Requests and replies from other agents">▸${reqs}</b>`:''}${late?`<b class="f" title="Follow-ups overdue or due today">◆${late}</b>`:''}${c.needs?`<b class="n">${c.needs}</b>`:''}${c.working?`<b class="w">${c.working}</b>`:''}${c.inbox?`<b class="i">${c.inbox}</b>`:''}</span>`; }
 function lateCount(root) { return (DATA.followups || []).filter(f => (!root || f.agent === root) && f.due !== 'upcoming').length; }
 function requestCount(root) { return (DATA.requests || []).filter(q => !root || q.agent === root).length; }
@@ -279,7 +293,7 @@ function visible(list) { return showDone ? list : list.filter(s => s.bucket !== 
 function currentList() {
   let list = SEL.agent ? byAgent(SEL.agent) : DATA.sessions;
   if (SEL.agent && SEL.area) list = list.filter(s => s.area && (s.area === SEL.area || s.area.startsWith(SEL.area + '/')));
-  return visible(list).sort((a, b) => ORDER[a.bucket] - ORDER[b.bucket] || b.last_activity - a.last_activity);
+  return visible(list).sort((a, b) => ORDER[a.bucket] - ORDER[b.bucket] || (a.bucket === 'later' ? a.remind_at - b.remind_at : b.last_activity - a.last_activity));
 }
 
 const ONBOARD = `<div class="onboard"><h2>No agents yet</h2><p>Every folder you run Claude Code in shows up here as an agent, with its sessions sorted by who needs you.</p><p>Open a terminal in any project and run <code>claude</code>. The board picks it up within a few seconds.</p></div>`;
@@ -410,7 +424,8 @@ function sessionRow(s) {
   const where = SEL.agent ? (s.area ? esc(s.area) : '') : esc(s.agent_name) + (s.area ? ' › ' + esc(s.area) : '');
   const p = s.bucket === 'needs' && s.detail ? `<span class="p why">${esc(s.detail)}</span>` : `<span class="p">${esc(lastPara(s.preview))}</span>`;
   const bg = s.waiting ? `<span class="bgw" title="Still running in the background: ${esc(s.waiting)}">⧗ ${esc(s.waiting)}</span>` : '';
-  return `<div class="item ${s.bucket} ${s.starred?'starred':''} ${CUR===s.id?'on':''}" data-id="${s.id}" title="Double-click or Enter to ${s.live?'jump to':'resume'}"><span class="dot ${s.bucket}">${dotFor(s)}</span><span class="t">${esc(s.title)}</span><span class="ago">${bg}<span class="agotxt">${esc(s.ago)}</span>${s.bucket==='closed'?`<button class="rowdone" data-done="${s.id}" title="Mark done">Done ✓</button>`:''}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
+  const rem = s.remind_at ? `<span class="rem ${s.remind_due?'due':''}" title="Reminder you set">⏰ ${esc(s.remind_label)}</span>` : '';
+  return `<div class="item ${s.bucket} ${s.starred?'starred':''} ${CUR===s.id?'on':''}" data-id="${s.id}" title="Double-click or Enter to ${s.live?'jump to':'resume'}"><span class="dot ${s.bucket}">${dotFor(s)}</span><span class="t">${esc(s.title)}</span><span class="ago">${bg}${rem}<span class="agotxt">${esc(s.ago)}</span>${s.bucket==='closed'?`<button class="rowdone" data-done="${s.id}" title="Mark done">Done ✓</button>`:''}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
 }
 function renderList() {
   const agent = agentOf(SEL.agent);
@@ -608,14 +623,15 @@ function renderDetail() {
   d.innerHTML = `
     <button class="back quiet" id="back">‹ Back</button>
     <h1><button class="star ${s.starred?'on':''}" data-act="star" title="${s.starred?'Unstar':'Star'} (s)"></button><span class="t" title="Click to rename">${esc(s.title)}</span></h1>
-    <div class="meta"><b>${esc(s.agent_name)}</b>${s.area?` › ${esc(s.area)}`:''} · <span class="ago">${esc(s.ago)}</span> ago ${s.live?'<span class="tag live">live</span>':'<span class="tag">exited</span>'}${s.question?'<span class="tag q">asks something</span>':''}${s.waiting?`<span class="tag bgw">⧗ ${esc(s.waiting)} running</span>`:''}${(!s.hooked && s.live)?'<span class="tag" title="No hook events yet; state inferred from the transcript">inferred</span>':''}</div>
+    <div class="meta"><b>${esc(s.agent_name)}</b>${s.area?` › ${esc(s.area)}`:''} · <span class="ago">${esc(s.ago)}</span> ago ${s.live?'<span class="tag live">live</span>':'<span class="tag">exited</span>'}${s.question?'<span class="tag q">asks something</span>':''}${s.waiting?`<span class="tag bgw">⧗ ${esc(s.waiting)} running</span>`:''}${s.remind_at?`<span class="tag rem ${s.remind_due?'due':''}">⏰ ${esc(s.remind_label)}</span>`:''}${(!s.hooked && s.live)?'<span class="tag" title="No hook events yet; state inferred from the transcript">inferred</span>':''}</div>
     <div class="state ${s.bucket}"><span class="dot ${s.bucket}">${dotFor(s)}</span>${esc(s.label)}</div>
     ${s.detail ? `<div class="why">${esc(s.detail)}</div>` : ''}
-    <div class="actions"><button class="primary" data-act="open">${s.live?'Jump to':'Resume'}</button>${doneBtn}</div>
+    <div class="actions"><button class="primary" data-act="open">${s.live?'Jump to':'Resume'}</button>${doneBtn}<button id="remBtn" title="Bring this session back at a set time (z)">⏰ ${s.remind_at ? esc(s.remind_label) : 'Remind me…'}</button></div>
     ${s.last_prompt ? `<div class="prompt">You: ${esc(s.last_prompt)}</div>` : ''}
     <div class="msg">${esc(s.preview || '(no reply yet)')}</div>
     <div class="path">${esc(s.cwd)}</div>`;
   d.querySelectorAll('[data-act]').forEach(el => el.addEventListener('click', async () => { await api(`/api/sessions/${s.id}/${el.dataset.act}`, {}); refresh(true); }));
+  $('#remBtn').addEventListener('click', () => remindBox(s));
   d.querySelector('h1 .t').addEventListener('click', async () => {
     const name = await ask('Session title', s.title, 'Empty restores the automatic title');
     if (name === null) return;
@@ -650,6 +666,28 @@ function confirmBox(title, hint, yesLabel) {
     function cleanup() { m.removeEventListener('keydown', onKey); yes.removeEventListener('click', onYes); $('#confirmNo').removeEventListener('click', onNo); m.removeEventListener('click', onBg); }
     m.addEventListener('keydown', onKey); yes.addEventListener('click', onYes); $('#confirmNo').addEventListener('click', onNo); m.addEventListener('click', onBg);
   });
+}
+function remindBox(s) {
+  const m = $('#remind'), inp = $('#remInput'), err = $('#remErr');
+  inp.value = ''; err.textContent = s.remind_at ? `Set for ${s.remind_label}` : '';
+  err.style.color = s.remind_at ? 'var(--muted)' : '';
+  $('#remClear').style.display = s.remind_at ? '' : 'none';
+  m.classList.add('open'); inp.focus();
+  const close = () => { m.classList.remove('open'); cleanup(); };
+  const submit = async when => {
+    const r = await api(`/api/sessions/${s.id}/remind`, {when});
+    if (r.error) { err.style.color = ''; err.textContent = r.error; inp.focus(); return; }
+    close(); toast(r.at ? `Back ${r.spoken}` : 'Reminder cleared', true);
+    await refresh(true);
+    const row = document.querySelector(`.item[data-id="${s.id}"]`); if (row) row.scrollIntoView({block: 'nearest'});
+  };
+  const onKey = e => { if (e.key === 'Enter' && inp.value.trim()) submit(inp.value); if (e.key === 'Escape') close(); e.stopPropagation(); };
+  const onOk = () => inp.value.trim() ? submit(inp.value) : inp.focus();
+  const onClear = () => submit('off'), onCancel = () => close();
+  const onPick = e => { const b = e.target.closest('[data-when]'); if (b) submit(b.dataset.when); };
+  const onBg = e => { if (e.target.id === 'remind') close(); };
+  function cleanup() { inp.removeEventListener('keydown', onKey); $('#remOk').removeEventListener('click', onOk); $('#remClear').removeEventListener('click', onClear); $('#remCancel').removeEventListener('click', onCancel); m.removeEventListener('click', onPick); m.removeEventListener('click', onBg); }
+  inp.addEventListener('keydown', onKey); $('#remOk').addEventListener('click', onOk); $('#remClear').addEventListener('click', onClear); $('#remCancel').addEventListener('click', onCancel); m.addEventListener('click', onPick); m.addEventListener('click', onBg);
 }
 function toast(msg, ok) { const t = $('#toast'); t.textContent = msg; t.style.background = ok ? 'var(--inbox)' : 'var(--needs)'; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3500); }
 
@@ -734,6 +772,7 @@ document.addEventListener('keydown', e => {
     const el = document.querySelector(`.item[data-id="${CUR}"]`); if (el) el.scrollIntoView({block: 'nearest'});
   }
   if (e.key === 's' && CUR && !e.metaKey && !e.ctrlKey && DATA.sessions.some(x => x.id === CUR)) api(`/api/sessions/${CUR}/star`, {}).then(() => refresh(true));
+  if (e.key === 'z' && CUR && !e.metaKey && !e.ctrlKey) { const s = DATA.sessions.find(x => x.id === CUR); if (s) { e.preventDefault(); remindBox(s); } }
   if (e.key === 'd' && CUR) { const s = DATA.sessions.find(x => x.id === CUR); if (s && s.bucket !== 'done') api(`/api/sessions/${CUR}/done`, {}).then(() => refresh(true)); }
   if (e.key === 'Enter') openSession(CUR);
 });

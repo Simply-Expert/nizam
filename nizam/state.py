@@ -4,6 +4,7 @@ Buckets:
   needs   — the agent is blocked on you (permission prompt, question, plan).
   working — the agent is processing.
   inbox   — the agent finished its turn in a session that is still open.
+  later   — you asked to come back at a set time; at that time it needs you.
   closed  — the session exited without being marked done.
   done    — you marked it done, or it went 2 days without activity.
 Done is sticky until new activity lands on the session, which reopens it.
@@ -23,6 +24,7 @@ from . import followups as followups_mod
 from . import requests as requests_mod
 from . import routines as routines_mod
 from . import providers
+from . import reminders as reminders_mod
 from .providers.base import ENDED, NEEDS, ACTIVITY, TURN_DONE, WORKING, Runtime, Transcript
 from .paths import EVENTS_FILE, STATE_FILE, ensure_dirs
 
@@ -184,6 +186,7 @@ class Persisted:
     def mark_done(self, sid: str, by: str = "user", at: float | None = None) -> None:
         with self.lock:
             self.data["done"][sid] = {"at": at or time.time(), "by": by}
+            self.data.get("reminders", {}).pop(sid, None)
             self.save()
 
     def reopen(self, sid: str) -> None:
@@ -207,6 +210,15 @@ class Persisted:
                 stars[sid] = time.time()
             else:
                 stars.pop(sid, None)
+            self.save()
+
+    def remind(self, sid: str, at: float | None) -> None:
+        with self.lock:
+            reminders = self.data.setdefault("reminders", {})
+            if at is None:
+                reminders.pop(sid, None)
+            else:
+                reminders[sid] = {"at": at, "set": time.time()}
             self.save()
 
     def set_pref(self, key: str, value) -> None:
@@ -327,6 +339,7 @@ class Board:
         reopened: dict = self.persist.data.get("reopened", {})
         names: dict = self.persist.data["names"]
         starred: dict = self.persist.data.get("starred", {})
+        reminders: dict = self.persist.data.get("reminders", {})
 
         sessions = []
         agents: dict[str, dict] = {}
@@ -352,7 +365,12 @@ class Board:
             if done and last_activity > done["at"] + 1:
                 self.persist.reopen(sid)
                 done = None
-            if not done and now - last_activity > AUTO_DONE_AFTER and reopened.get(sid, 0) < last_activity:
+            remind = reminders.get(sid)
+            if remind and (t.last_prompt_ts or 0) > remind["set"]:
+                # You wrote to it, so you came back without the reminder.
+                self.persist.remind(sid, None)
+                remind = None
+            if not done and not remind and now - last_activity > AUTO_DONE_AFTER and reopened.get(sid, 0) < last_activity:
                 # Dated at the moment it went stale so old sessions age out of Done.
                 self.persist.mark_done(sid, by="auto", at=last_activity + AUTO_DONE_AFTER)
                 done = done_map.get(sid)
@@ -360,6 +378,13 @@ class Board:
             waiting = _waiting(t, rt) if live else ""
             asks = _looks_like_question(t.last_assistant_text.strip())
             bucket, label, detail = self._classify(now, t, rt, h, live, last_activity, waiting, asks)
+            remind_label = reminders_mod.label(remind["at"], now) if remind else None
+            if remind and now >= remind["at"]:
+                if bucket != "needs":
+                    bucket, label = "needs", "Reminder"
+                    detail = f"You asked to come back to this {reminders_mod.spoken(remind['at'], now)}"
+            elif remind and bucket in ("inbox", "closed"):
+                bucket, label = "later", f"Back {reminders_mod.spoken(remind['at'], now)}"
             if done:
                 bucket, label = "done", ("Done" if done["by"] == "user" else "Auto-done")
             if bucket == "done" and now - done["at"] > DONE_VISIBLE_FOR:
@@ -392,10 +417,13 @@ class Board:
                 "waiting": waiting,
                 "done": done,
                 "starred": sid in starred,
+                "remind_at": remind["at"] if remind else None,
+                "remind_label": remind_label,
+                "remind_due": bool(remind and now >= remind["at"]),
                 "hooked": h is not None,
             })
-        order = {"needs": 0, "working": 1, "inbox": 2, "closed": 3, "done": 4}
-        sessions.sort(key=lambda s: (order[s["bucket"]], -s["last_activity"]))
+        order = {"needs": 0, "working": 1, "inbox": 2, "later": 3, "closed": 4, "done": 5}
+        sessions.sort(key=lambda s: (order[s["bucket"]], s["remind_at"] if s["bucket"] == "later" else -s["last_activity"]))
         done_seen = 0
         kept = []
         for s in sessions:

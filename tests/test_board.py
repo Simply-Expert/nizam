@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 import fixtures as fx
-from nizam import state
+from nizam import reminders, state
 
 SID = "11111111-1111-4111-8111-111111111111"
 
@@ -261,6 +261,55 @@ class Done(BoardCase):
     def test_done_drops_off_after_five_days(self):
         self.chat(age=8 * 86400)
         self.assertEqual(self.rows(), [])
+
+
+class Reminders(BoardCase):
+    def test_later_until_due_then_needs_you(self):
+        self.chat(); self.live()
+        self.board.persist.remind(SID, self.now + 3600)
+        s = self.row()
+        self.assertEqual(s["bucket"], "later")
+        self.assertEqual(s["label"], "Back " + reminders.spoken(self.now + 3600, self.now))
+        self.assertFalse(s["remind_due"])
+        self.board.persist.remind(SID, self.now - 60)
+        s = self.row()
+        self.assertEqual((s["bucket"], s["label"]), ("needs", "Reminder"))
+        self.assertTrue(s["remind_due"])
+
+    def test_working_and_real_needs_keep_their_state(self):
+        self.chat(); self.live("busy", age=5)
+        self.board.persist.remind(SID, self.now + 3600)
+        self.assertEqual(self.state_of()[0], "working")
+        self.live()
+        self.event("Notification", notification_type="permission_prompt", message="Bash?")
+        self.board.persist.remind(SID, self.now - 60)
+        self.assertEqual(self.state_of(), ("needs", "Permission needed", "Bash?"))
+
+    def test_a_prompt_after_setting_clears_it(self):
+        self.chat(); self.live()
+        self.board.persist.remind(SID, self.now + 3600)
+        self.board.persist.data["reminders"][SID]["set"] = self.now - 100
+        self.assertEqual(self.row()["bucket"], "inbox")
+        self.assertNotIn(SID, self.board.persist.data["reminders"])
+
+    def test_no_auto_done_while_set(self):
+        self.chat(age=3 * 86400)
+        self.board.persist.remind(SID, self.now + 3600)
+        self.assertEqual(self.row()["bucket"], "later")
+
+    def test_done_clears_it(self):
+        self.chat(); self.live()
+        self.board.persist.remind(SID, self.now + 3600)
+        self.board.persist.mark_done(SID)
+        self.assertEqual(self.row()["bucket"], "done")
+        self.assertNotIn(SID, self.board.persist.data["reminders"])
+
+    def test_later_sits_above_closed_sorted_by_time(self):
+        other, idle = "22222222-2222-4222-8222-222222222222", "44444444-4444-4444-8444-444444444444"
+        self.chat(); self.chat(sid=other, age=500); self.chat(sid=idle, age=5)
+        self.board.persist.remind(SID, self.now + 7200)
+        self.board.persist.remind(other, self.now + 600)
+        self.assertEqual([s["id"] for s in self.rows()], [other, SID, idle])
 
 
 class Events(BoardCase):

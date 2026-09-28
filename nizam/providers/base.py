@@ -45,6 +45,7 @@ class Transcript:
     last_ts: float | None = None
     last_role: str | None = None
     last_user_prompt: str = ""
+    last_prompt_ts: float | None = None
     first_user_prompt: str = ""
     last_assistant_text: str = ""
     last_assistant_tools: list[str] = field(default_factory=list)

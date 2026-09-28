@@ -104,13 +104,14 @@ Steps 3 to 5 work because of the `/nizam` skill, below. You never write these fi
 | **Follow-up** | A dated one-off the agent owes, not yet a session. | `## YYYY-MM-DD (Day) — [area] Title` sections in `FOLLOWUPS.md` at the agent root, where an optional `[area]` tag files an item under that area, or in a self-contained area's own `FOLLOWUPS.md`. The board merges them. Read-only. |
 | **Routine** | Recurring work an agent does unattended, on a schedule: a headless Claude run, or a plain script. | `routines/<name>.md` at the agent root or inside an area: a `schedule:` header and the prompt. Read-only. |
 
-Sessions fall into five states:
+Sessions fall into six states:
 
 | State | Meaning | Source |
 |---|---|---|
 | **Needs you** | Claude is blocked: a permission prompt, `AskUserQuestion`, a plan to approve, or no progress for 5 minutes while busy. | Hook events |
 | **Working** | Claude is processing. | Claude's own runtime status file |
 | **Your turn** | Claude finished its turn in a session that is still open. | `Stop` hook, or idle status |
+| **Later** | You set a reminder; it waits here, out of the counts, and moves to *Needs you* at that time. | You |
 | **Closed** | The session exited without being marked done. Ages into Done after two days. | Process gone |
 | **Done** | You marked it done, or it went two days without activity. New activity reopens it. | You |
 
@@ -139,7 +140,13 @@ last message was wrong too often; you are the only one who knows a task is over.
   **Open last run** resumes that run as a normal session, **Sync schedule** installs a new schedule.
 - **Clear** marks every *Closed* session in the current view as done; hovering a Closed row shows a Done button.
 - **Star** a session from its title in the detail pane; it gets a ★ and a gold edge in the list.
-- Keys: `j`/`k` move, `Enter` jumps, `d` marks done, `s` stars, `n` starts a session, `Esc` closes.
+- **Remind me** (⏰ in the detail pane, or `z`) brings a session back at a time: `1:30pm`, `14:00`,
+  `+45m`, `tomorrow 9am`, `fri 10:00`, or one of the quick picks. Until then it waits under *Later*
+  and stays out of the counts. At that time it moves to *Needs you* and you get a notification.
+  Writing to the session, jumping back to it once it is due, or marking it done clears the reminder.
+  Inside a session you can say "remind me about this at 1:30" and the agent runs
+  `nizam remind 1:30pm`.
+- Keys: `j`/`k` move, `Enter` jumps, `d` marks done, `s` stars, `z` sets a reminder, `n` starts a session, `Esc` closes.
 - Notifications fire when a session newly needs you.
 
 Claude Code sessions started from the Claude desktop app appear too, but without a live status
@@ -163,6 +170,7 @@ finance") or when you type the command:
 /nizam followup tag                 # add [area] tags to untagged items
 /nizam followup list
 /nizam followup done banner
+/nizam remind 1:30pm                # bring this session back at 1:30 (Later, then Needs you)
 /nizam routine new weekly-digest    # routines/weekly-digest.md + its schedule
 /nizam routine migrate nightly-scan # from a hand-made launchd job or cron line
 /nizam routine list

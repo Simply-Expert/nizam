@@ -225,6 +225,7 @@ def read_transcript(path: Path, full: bool = False) -> Transcript | None:
                 if txt:
                     t.last_role = "user"
                     t.last_user_prompt = txt
+                    t.last_prompt_ts = ts or t.last_prompt_ts
                     if not t.first_user_prompt:
                         t.first_user_prompt = txt
         else:
