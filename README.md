@@ -102,7 +102,7 @@ Steps 3 to 5 work because of the `/nizam` skill, below. You never write these fi
 | **Agent** | A role you talk to, e.g. *Marketing*, *Backend*, *VA*. | The nearest folder above the session's start directory holding `CLAUDE.md`, `AGENTS.md` or a configured `.claude/`. Otherwise the start directory itself. |
 | **Area** | A standing topic inside an agent, e.g. `channels/email`, `campaigns/sept-2026`. | Any sub-folder of the agent holding `INSTRUCTIONS.md`. Areas nest. Folders without the marker (`data`, `scripts`, `shared`) are not areas. |
 | **Session** | One Claude Code conversation. | The transcript in `~/.claude/projects`. |
-| **Follow-up** | A dated one-off the agent owes, not yet a session. | `## YYYY-MM-DD (Day) — [area] Title` sections in `FOLLOWUPS.md` at the agent root, where an optional `[area]` tag files an item under that area, or in a self-contained area's own `FOLLOWUPS.md`. The board merges them. Read-only. |
+| **Follow-up** | A dated one-off the agent owes, not yet a session. | `## YYYY-MM-DD (Day) HH:MM — [area] Title` sections (the time is optional) in `FOLLOWUPS.md` at the agent root, where an optional `[area]` tag files an item under that area, or in a self-contained area's own `FOLLOWUPS.md`. The board merges them. Read-only. |
 | **Routine** | Recurring work an agent does unattended, on a schedule: a headless Claude run, or a plain script. | `routines/<name>.md` at the agent root or inside an area: a `schedule:` header and the prompt. Read-only. |
 
 Sessions fall into six states:
@@ -132,9 +132,11 @@ last message was wrong too often; you are the only one who knows a task is over.
   an exited one with `claude --resume`. **New here** starts a session in that agent and area with
   your last-used settings; ⌥-click for the full dialog (prompt, permission mode, git worktree,
   paste-only).
-- **Follow-ups** appear under an agent's sessions, overdue in red and today in amber; *All agents*
-  shows only what is due. **Start session** opens one with the follow-up as the first prompt. Nizam
-  never edits the file: the agent records the outcome and deletes its own line.
+- **Follow-ups** appear under an agent's sessions: amber once due, red once late; *All agents*
+  shows only what is due. An item with a time comes up then and notifies; one without comes up at
+  10:00, or whatever `nizam followups hour 8pm` sets. It is late once the next day's untimed items
+  come up. **Start session** opens one with the follow-up as the first prompt. Nizam never edits
+  the file: the agent records the outcome and deletes its own line.
 - **Routines** appear under an agent's follow-ups with their next run and last result. A run that
   errored, timed out, or ended without confirming its work counts under *Needs you*, notifies, and
   shows in *All agents* until it succeeds or you dismiss it. **Run now** starts one by hand,
@@ -148,7 +150,7 @@ last message was wrong too often; you are the only one who knows a task is over.
   Inside a session you can say "remind me about this at 1:30" and the agent runs
   `nizam remind 1:30pm`.
 - Keys: `j`/`k` move, `Enter` jumps, `d` marks done, `s` stars, `z` sets a reminder, `n` starts a session, `Esc` closes.
-- Notifications fire when a session newly needs you.
+- Notifications fire when a session newly needs you, and when a follow-up with a time comes due.
 
 Claude Code sessions started from the Claude desktop app appear too, but without a live status
 and with Jump to opening the app rather than the chat. Regular desktop chats are not Claude Code
@@ -168,6 +170,7 @@ finance") or when you type the command:
 /nizam area promote campaigns/sept-2026
 /nizam area archive referral
 /nizam followup add 2026-09-18 re-run the banner conversion script
+/nizam followup add fri 9pm run the weekly export
 /nizam followup tag                 # add [area] tags to untagged items
 /nizam followup list
 /nizam followup done banner

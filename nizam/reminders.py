@@ -23,7 +23,7 @@ def _day(word: str, today: date) -> date | None:
     return None
 
 
-def _clock(text: str) -> tuple[int, int]:
+def clock(text: str) -> tuple[int, int]:
     m = _TIME.match(text)
     if not m:
         raise ValueError(f"can't read '{text}' as a time; {HELP}")
@@ -58,8 +58,8 @@ def parse(text: str, now: float) -> float | None:
         today = datetime.fromtimestamp(now).date()
         head, _, rest = t.partition(" ")
         day = _day(head.rstrip(","), today)
-        clock = rest.strip().removeprefix("at ") if day else t
-        hour, minute = _clock(clock) if clock else (9, 0)
+        spec = rest.strip().removeprefix("at ") if day else t
+        hour, minute = clock(spec) if spec else (9, 0)
         when = datetime.combine(day or today, datetime.min.time()).replace(hour=hour, minute=minute)
         if when.timestamp() <= now:
             if day is None:

@@ -1,6 +1,6 @@
 ---
 name: nizam
-description: Nizam (نظام) — manage this agent's Areas and Follow-ups as seen on the Nizam board. Use when the user says "nizam area new X", "create an area for X", "list areas", "archive the X area", "promote this folder to an area", "add a follow-up", "remind us to X on <date>", "what follow-ups are due", "that follow-up is done", "remind me about this at 1:30", "bring this session back tomorrow at 9", "nizam routine new X", "make this a nizam routine", "migrate/move this launchd job (or cron job) to nizam routines", "run this script on a schedule with nizam", "list this agent's routines", "why did the X routine fail", "any requests?", "check requests from other agents", "hand this to the X agent", "leave a request for X", "let agent X send requests to agent Y", "which agents can this one write to", or asks where a topic's instructions and journal should live. An Area is a sub-folder carrying INSTRUCTIONS.md (durable rules) and JOURNAL-<year>.md (dated log). Folders without INSTRUCTIONS.md (data, scripts, shared) are not areas. A Routine is routines/<name>.md: a recurring headless run on this Mac, scheduled by launchd. Not for Claude Code's own cloud routines (/schedule) or /loop.
+description: Nizam (نظام) — manage this agent's Areas and Follow-ups as seen on the Nizam board. Use when the user says "nizam area new X", "create an area for X", "list areas", "archive the X area", "promote this folder to an area", "add a follow-up", "remind us to X on <date>", "what follow-ups are due", "that follow-up is done", "make follow-ups come up at 8pm", "remind me about this at 1:30", "bring this session back tomorrow at 9", "nizam routine new X", "make this a nizam routine", "migrate/move this launchd job (or cron job) to nizam routines", "run this script on a schedule with nizam", "list this agent's routines", "why did the X routine fail", "any requests?", "check requests from other agents", "hand this to the X agent", "leave a request for X", "let agent X send requests to agent Y", "which agents can this one write to", or asks where a topic's instructions and journal should live. An Area is a sub-folder carrying INSTRUCTIONS.md (durable rules) and JOURNAL-<year>.md (dated log). Folders without INSTRUCTIONS.md (data, scripts, shared) are not areas. A Routine is routines/<name>.md: a recurring headless run on this Mac, scheduled by launchd. Not for Claude Code's own cloud routines (/schedule) or /loop.
 ---
 
 # Nizam
@@ -85,6 +85,12 @@ filters by area, and can start a session from one. It never writes these files; 
    Name the script, file or query to run. End with "Delete once <condition>."
    ```
 
+   A time after the day is optional, 24-hour: `## 2026-09-18 (Fri) 21:00 — [email] Title`. Add one
+   when the user names a time ("Friday at 9pm", "tomorrow night") or the work only makes sense then;
+   the item comes up at that time and the board notifies. Without a time it comes up at the user's
+   default hour (10:00 unless changed with `followups hour`). Either way it counts as late once the
+   next day's untimed items come up.
+
    The `[tag]` is the area the item belongs to: the area's folder name (`[email]`), or its path
    from the agent root when the name alone is ambiguous (`[campaigns/sept-2026]`). Run `area list`
    if unsure. Omit the tag for items that belong to the agent as a whole. A tagged item shows under
@@ -102,8 +108,13 @@ else in the file and show the list of changes.
 ## `followup list`
 Aggregate first: read the root `FOLLOWUPS.md` **and** every `FOLLOWUPS.md` inside an area (run
 `area list` to find them), so nothing due in an area is missed from a root session. Print the
-items grouped as overdue, today, upcoming, each with its area. Point out any item more than 7 days late and
+items grouped as overdue, due now, upcoming, each with its area and time if it has one. Point out any item more than 7 days late and
 ask whether to delete it or move it into a plan.
+
+## `followups hour [<time>]`: when untimed follow-ups come up
+Run `nizam followups hour 8pm` (or `20:00`) when the user wants items without a time of their own to
+come up at another hour, and `nizam followups hour` to show the current one. It is one setting for
+the whole board, 10:00 unless changed, and needs the Nizam app running.
 
 ## `followup done <title or date>`
 Find the item in whichever file holds it. Write the outcome where it belongs (the area's journal, a plan's status log), then delete the item
@@ -117,8 +128,8 @@ time comes. Nothing is written into the agent's files, and no new session is sta
 - **Reminder**: the user wants to come back to *this conversation*, usually later today or this
   week ("remind me about this at 1:30", "bring this back tomorrow morning", "ping me here in an
   hour"). Run `nizam remind <when>`.
-- **Follow-up**: work the agent owes on a *date*, picked up cold by a fresh session ("remind us to
-  chase the invoice on Friday"). Use `followup add`.
+- **Follow-up**: work the agent owes on a *date*, maybe at a time, picked up cold by a fresh session
+  ("remind us to chase the invoice on Friday", "run the export tomorrow night"). Use `followup add`.
 - If you can't tell which one they mean, ask. Never set a reminder the user did not ask for.
 
 ```
@@ -130,7 +141,7 @@ nizam remind off             # clear it
 It finds the current session on its own. Reply with the time it confirms. It clears itself when the
 user writes to the session again, jumps back to it once it is due, or marks it done. It only works
 while the Nizam app is running, and only up to a week ahead; for anything further out, offer a
-follow-up.
+follow-up, which can carry a time too.
 
 ## Rules
 - Never put dated events in INSTRUCTIONS.md, and never leave settled rules only in the journal.

@@ -385,16 +385,10 @@ function followupsFor(agentRoot, areaRel) {
   if (agentRoot && areaRel) f = f.filter(x => x.area && (x.area === areaRel || x.area.startsWith(areaRel + '/')));
   return f;
 }
-function dueLabel(f) {
-  if (f.days === 0) return 'today';
-  if (f.days === 1) return 'tomorrow';
-  if (f.days === -1) return 'yesterday';
-  return f.days < 0 ? `${-f.days}d late` : `in ${f.days}d`;
-}
 function followupRow(f, showAgent) {
   const a = agentOf(f.agent);
   const where = (showAgent && a ? esc(a.display_name) : '') + (f.area ? (showAgent ? ' › ' : '') + esc(f.area) : '');
-  return `<div class="item fu ${f.due} ${CUR===f.id?'on':''}" data-id="${f.id}"><span class="dot fu ${f.due}">◆</span><span class="t">${esc(f.title)}</span><span class="ago due ${f.due}">${dueLabel(f)}</span>${where?`<span class="where">${where}</span>`:''}<span class="p">${esc((f.body || '').split('\n')[0])}</span></div>`;
+  return `<div class="item fu ${f.due} ${CUR===f.id?'on':''}" data-id="${f.id}"><span class="dot fu ${f.due}">◆</span><span class="t">${esc(f.title)}</span><span class="ago due ${f.due}">${esc(f.when)}</span>${where?`<span class="where">${where}</span>`:''}<span class="p">${esc((f.body || '').split('\n')[0])}</span></div>`;
 }
 function requestRow(q, showAgent) {
   const a = agentOf(q.agent);
@@ -502,13 +496,13 @@ function renderFollowup(d, f) {
   d.innerHTML = `
     <button class="back quiet" id="back">‹ Back</button>
     <h1>${esc(f.title)}</h1>
-    <div class="meta"><b>${esc(a ? a.display_name : '')}</b>${f.area?` › ${esc(f.area)}`:''} · follow-up · due ${esc(f.date)} <span class="tag due ${f.due}">${dueLabel(f)}</span></div>
+    <div class="meta"><b>${esc(a ? a.display_name : '')}</b>${f.area?` › ${esc(f.area)}`:''} · follow-up · due ${esc(f.date)}${f.time?' '+esc(f.time):''} <span class="tag due ${f.due}">${esc(f.when)}</span></div>
     <div class="actions"><button class="primary" id="fuStart" title="Open a session here with this follow-up as the first prompt">Start session</button></div>
     <div class="msg">${esc(f.body || '(no details)')}</div>
     <div class="path">${esc(f.file)} · read-only; the agent edits this file</div>`;
   $('#fuStart').addEventListener('click', async () => {
     const last = DATA.prefs.last_start || {};
-    const prompt = `Follow-up due ${f.date}: ${f.title}\n\n${(f.body || '').slice(0, 1500)}\n\nThis comes from FOLLOWUPS.md. When it is handled, record the outcome where it belongs and delete the item from that file.`;
+    const prompt = `Follow-up due ${f.date}${f.time ? ' ' + f.time : ''}: ${f.title}\n\n${(f.body || '').slice(0, 1500)}\n\nThis comes from FOLLOWUPS.md. When it is handled, record the outcome where it belongs and delete the item from that file.`;
     const r = await api('/api/start', {cwd: f.cwd, prompt, permission_mode: last.permission_mode || 'acceptEdits', title: f.title.slice(0, 90)});
     if (r.error) { toast(r.error); return; }
     toast('Session started for this follow-up', true); setTimeout(() => refresh(true), 1500);

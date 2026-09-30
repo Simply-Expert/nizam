@@ -282,6 +282,22 @@ def remind_cmd(when: list[str], session: str | None) -> int:
     return 0
 
 
+def followups_cmd(action: str, when: list[str]) -> int:
+    import urllib.error
+    from . import followups
+    try:
+        prefs = _api("/api/prefs", {"followup_hour": " ".join(when)} if when else {})
+    except (OSError, urllib.error.URLError):
+        print("Nizam is not running; start it with: nizam app --detach", file=sys.stderr)
+        return 1
+    if prefs.get("error"):
+        print(prefs["error"], file=sys.stderr)
+        return 1
+    h, m = followups.default_hour(prefs["prefs"])
+    print(f"follow-ups without a time of their own come up at {h:02d}:{m:02d}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="nizam")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -312,6 +328,9 @@ def main(argv: list[str] | None = None) -> int:
     rm = sub.add_parser("remind", help="bring this session back to you at a time: <when> | off | (no argument: show)")
     rm.add_argument("when", nargs="*", help="1:30pm, 14:00, +45m, in 2h, tomorrow 9am, fri 10:00, or off")
     rm.add_argument("--session", help="a session id or its first characters (default: the session this runs in)")
+    fu = sub.add_parser("followups", help="hour [<time>]: when follow-ups without a time come up (default 10:00)")
+    fu.add_argument("action", choices=("hour",))
+    fu.add_argument("when", nargs="*", help="10am, 20:00, 8pm")
     lg = sub.add_parser("login", help="start at login: on | off | status")
     lg.add_argument("state", choices=("on", "off", "status"))
     a = p.parse_args(argv)
@@ -335,6 +354,8 @@ def main(argv: list[str] | None = None) -> int:
         return request_cmd(a.action, a.args)
     if a.cmd == "remind":
         return remind_cmd(a.when, a.session)
+    if a.cmd == "followups":
+        return followups_cmd(a.action, a.when)
     if a.cmd == "login":
         from .launch import login_enabled, set_login
         if a.state != "status":

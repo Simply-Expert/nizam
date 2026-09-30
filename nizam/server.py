@@ -268,6 +268,13 @@ class Handler(BaseHTTPRequestHandler):
             for k, v in body.items():
                 if k in ("launcher", "show_done", "density", "selected", "theme"):
                     b.persist.set_pref(k, v)
+                elif k == "followup_hour":
+                    try:
+                        h, m = reminders.clock(" ".join(str(v).lower().split()).removeprefix("at "))
+                    except ValueError as e:
+                        return self._json({"error": str(e)[:1].upper() + str(e)[1:]}, 400)
+                    b.persist.set_pref(k, f"{h:02d}:{m:02d}")
+                    b.invalidate()
             return self._json({"ok": True, "prefs": b.persist.data["prefs"]})
 
         return self._json({"error": "not found"}, 404)

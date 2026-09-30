@@ -448,9 +448,10 @@ class Board:
         followups: list[dict] = []
         routines: list[dict] = []
         acks = self.persist.data.get("routine_acks", {})
+        hour = followups_mod.default_hour(self.persist.data["prefs"])
         for root in agents:
             loaded = agents_mod.load_agent(Path(root))
-            followups.extend(followups_mod.for_agent(loaded))
+            followups.extend(followups_mod.for_agent(loaded, hour, now))
             routines.extend(routines_mod.board_rows(loaded, acks))
         for a in agents.values():
             o = overrides.get(a["root"], {})

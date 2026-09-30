@@ -609,9 +609,13 @@ class AppDelegate(NSObject):
                 needs_now[s["id"]] = s
         for f in snap.get("followups", []):
             if f["due"] != "upcoming":
-                when = "today" if f["due"] == "today" else f"{-f['days']}d overdue"
+                when = f["when"] if f["due"] == "today" else f"{-f['days']}d overdue"
                 items["due"].append({"id": f["id"], "title": f["title"],
                                      "sub": f"{agent_names.get(f['agent'], '')} · {when}"})
+            # A time on a follow-up asks to be noticed then.
+            if f["time"] and f["due"] == "today":
+                needs_now[f["id"]] = {"agent_name": agent_names.get(f["agent"], ""),
+                                      "label": "Follow-up due", "title": f["title"]}
         for r in snap.get("routines", []):
             if r["failing"]:
                 n = {"agent_name": agent_names.get(r["agent"], ""),
