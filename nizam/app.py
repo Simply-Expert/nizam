@@ -569,6 +569,8 @@ class AppDelegate(NSObject):
         self._restore_badge()
         if self.board.persist.data["prefs"].get("badge", True):
             self.badge.orderFrontRegardless()
+        NSWorkspace.sharedWorkspace().notificationCenter().addObserver_selector_name_object_(
+            self, "spaceChanged:", "NSWorkspaceActiveSpaceDidChangeNotification", None)
         self.refresh_(None)
         self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
             REFRESH_SECS, self, "refresh:", None, True)
@@ -687,6 +689,13 @@ class AppDelegate(NSObject):
         else:
             self.badge.setFrameOrigin_(NSMakePoint(screen.origin.x + screen.size.width - 160,
                                                    screen.origin.y + screen.size.height - 50))
+
+    def spaceChanged_(self, _note):
+        # An all-Spaces panel keeps its hover tracking only on the Space it was ordered in.
+        self.hide_list()
+        if self.badge.isVisible():
+            self.badge.orderFrontRegardless()
+            _track_hover(self.badge_view)
 
     def badgeMoved_(self, _):
         o = self.badge.frame().origin
