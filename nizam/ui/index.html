@@ -89,6 +89,9 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .lsec { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); padding: 12px 12px 4px; font-weight: 600; }
 .lsec.needs { color: var(--needs); } .lsec.working { color: var(--working); } .lsec.inbox { color: var(--inbox); } .lsec.closed { color: var(--muted); } .lsec.later { color: var(--due); } .lsec.done { color: var(--done); }
 .lsec span { font-weight: 500; }
+.lsec.fold { cursor: pointer; user-select: none; }
+.lsec.fold::before { content: ""; display: inline-block; width: 5px; height: 5px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); margin: 0 8px 0 2px; transition: transform .15s; }
+.lsec.fold.folded::before { transform: translateY(0) rotate(-45deg); }
 .item { display: grid; grid-template-columns: 16px 1fr auto; gap: 3px 8px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--line); }
 .item:hover { background: var(--hover); }
 .item.on { background: var(--accent-bg); }
@@ -240,12 +243,13 @@ const $ = (s, el=document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ORDER = {needs: 0, working: 1, inbox: 2, later: 3, closed: 4, done: 5};
 const SECTION = {needs: 'Needs you', working: 'Working', inbox: 'Your turn', closed: 'Closed', later: 'Later', done: 'Done'};
+const FOLDABLE = ['closed', 'done'];
 const DOT = {needs: '●', working: '◐', inbox: '●', closed: '○', later: '◷', done: '✓'};
 function load(k, d) { try { const v = localStorage.getItem('nizam.'+k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function save(k, v) { try { localStorage.setItem('nizam.'+k, JSON.stringify(v)); } catch {} }
 
 let DATA = null, SEL = load('sel', {agent: null, area: null}), CUR = new URLSearchParams(location.search).get('select'), DRAG = null;
-let showDone = load('showDone', false), _lastKey = null, detailOpen = !!CUR;
+let showDone = load('showDone', false), folded = load('folded', []), _lastKey = null, detailOpen = !!CUR;
 if (CUR) SEL = {agent: null, area: null};
 const NATIVE = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nizam;
 function nizamSelect(id) { SEL = {agent: null, area: null}; CUR = id; detailOpen = true; refresh(true); }
@@ -437,7 +441,11 @@ function renderList() {
   h += `</div></div>`;
   NAV = [];
   const open = list.filter(s => s.bucket !== 'done'), done = list.filter(s => s.bucket === 'done');
-  const section = (cls, label, n) => `<div class="lsec ${cls}">${label} <span>${n}</span></div>`;
+  const section = (cls, label, n) => FOLDABLE.includes(cls)
+    ? `<div class="lsec ${cls} fold ${folded.includes(cls)?'folded':''}" data-fold="${cls}" title="Click to ${folded.includes(cls)?'expand':'collapse'}">${label} <span>${n}</span></div>`
+    : `<div class="lsec ${cls}">${label} <span>${n}</span></div>`;
+  // A folded section still shows the selected row, so jumping to a closed session keeps it in view.
+  const shown = s => !folded.includes(s.bucket) || s.id === CUR;
   const fuHtml = () => {
     if (!fus.length) return '';
     const late = fus.filter(f => f.due === 'overdue').length;
@@ -462,12 +470,15 @@ function renderList() {
   let last = null;
   for (const s of open) {
     if (s.bucket !== last) { h += section(s.bucket, SECTION[s.bucket], open.filter(x => x.bucket === s.bucket).length); last = s.bucket; }
-    NAV.push(s.id); h += sessionRow(s);
+    if (shown(s)) { NAV.push(s.id); h += sessionRow(s); }
   }
   if (SEL.agent) h += rqHtml() + fuHtml() + rtHtml();
-  if (done.length) { h += section('done', SECTION.done, done.length); done.forEach(s => { NAV.push(s.id); h += sessionRow(s); }); }
-  if (!NAV.length) h += `<div class="empty">${SEL.agent ? 'Nothing waiting from this agent' : 'Nothing waiting'}</div>`;
+  if (done.length) { h += section('done', SECTION.done, done.length); done.filter(shown).forEach(s => { NAV.push(s.id); h += sessionRow(s); }); }
+  if (!NAV.length && !list.length) h += `<div class="empty">${SEL.agent ? 'Nothing waiting from this agent' : 'Nothing waiting'}</div>`;
   const el = $('#list'); el.innerHTML = h;
+  el.querySelectorAll('[data-fold]').forEach(c => c.addEventListener('click', () => {
+    const b = c.dataset.fold; folded = folded.includes(b) ? folded.filter(x => x !== b) : [...folded, b]; save('folded', folded); render();
+  }));
   el.querySelectorAll('[data-ar]').forEach(c => c.addEventListener('click', () => { SEL.area = c.dataset.ar || null; save('sel', SEL); render(); }));
   el.querySelectorAll('[data-agent]').forEach(c => c.addEventListener('click', () => { SEL = {agent: c.dataset.agent || null, area: null}; save('sel', SEL); CUR = null; render(); }));
   el.querySelectorAll('[data-id]').forEach(c => c.addEventListener('click', e => {
