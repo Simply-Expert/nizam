@@ -2,6 +2,16 @@
 
 The newest release is at the top.
 
+## 0.2.5 · 20 Oct 2026
+
+- **Notifications are opt-in.** They are off until you turn them on: right-click the badge
+  and choose *Notifications*, then allow Nizam when macOS asks.
+- **Clicking a notification takes you there.** It opens the session's terminal tab, or the
+  Claude app for a session started there, instead of Script Editor. Anything else opens the
+  board on that item.
+- **A lower, softer sound.** Notifications use Bottle instead of Tink.
+- **Closed and Done fold away.** Click either header on the board to collapse it to its count.
+
 ## 0.2.4 · 7 Oct 2026
 
 - **Follow-ups at a time of day.** Give a follow-up a time (`## 2026-10-01 (Thu) 21:00 — Title`)
