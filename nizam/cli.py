@@ -21,7 +21,7 @@ VENV_PY = VENV / "bin" / "python"
 
 def _venv_ok() -> bool:
     return VENV_PY.exists() and subprocess.run(
-        [str(VENV_PY), "-c", "import AppKit, WebKit"], capture_output=True).returncode == 0
+        [str(VENV_PY), "-c", "import AppKit, WebKit, UserNotifications"], capture_output=True).returncode == 0
 
 
 def _seed_python() -> str | None:
@@ -38,26 +38,32 @@ def ensure_venv() -> bool:
     print(f"→ creating {VENV} and installing PyObjC (one-time)…")
     subprocess.run([seed, "-m", "venv", str(VENV)], check=False)
     subprocess.run([str(VENV_PY), "-m", "pip", "install", "--quiet",
-                    "pyobjc-framework-Cocoa", "pyobjc-framework-WebKit"], check=False)
+                    "pyobjc-framework-Cocoa", "pyobjc-framework-WebKit",
+                    "pyobjc-framework-UserNotifications"], check=False)
     return _venv_ok()
 
 
 def run_app(port: int, detach: bool = False) -> int:
+    from .launch import app_bundle
     from .terminal import clean_env
     if not ensure_venv():
         return 1
+    exe = app_bundle(VENV_PY)
+    argv = [str(exe or VENV_PY), "-m", "nizam", "app", "--port", str(port)]
+    env = clean_env()
+    if exe:
+        # How a venv's own launcher points the interpreter at the venv; Python unsets it on start.
+        env["__PYVENV_LAUNCHER__"] = str(VENV_PY)
     if detach:
         # Its own session, so closing the launching terminal does not take the app down with it.
         log = open(NIZAM_DIR / "app.log", "ab")
-        subprocess.Popen([str(VENV_PY), "-m", "nizam", "app", "--port", str(port)], env=clean_env(),
-                         cwd=str(Path(__file__).resolve().parents[1]), stdin=subprocess.DEVNULL,
+        subprocess.Popen(argv, env=env, cwd=str(Path(__file__).resolve().parents[1]), stdin=subprocess.DEVNULL,
                          stdout=log, stderr=log, start_new_session=True, close_fds=True)
         print("Nizam started in the background; log:", NIZAM_DIR / "app.log")
         return 0
-    if os.path.realpath(sys.executable) != os.path.realpath(VENV_PY):
-        os.execve(str(VENV_PY), [str(VENV_PY), "-m", "nizam", "app", "--port", str(port)], clean_env())
-    if len(clean_env()) != len(os.environ):
-        os.execve(sys.executable, [sys.executable, "-m", "nizam", "app", "--port", str(port)], clean_env())
+    # Not realpath: the venv's python resolves to the very binary of the Python it was made from.
+    if os.path.abspath(sys.orig_argv[0]) != argv[0] or len(clean_env()) != len(os.environ):
+        os.execve(argv[0], argv, env)
     from .app import run
     return run(port)
 

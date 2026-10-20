@@ -2,14 +2,61 @@
 from __future__ import annotations
 
 import os
+import plistlib
+import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 from .paths import NIZAM_DIR
 
 PID_FILE = NIZAM_DIR / "app.pid"
 QUIT_FLAG = NIZAM_DIR / "app.quit"
 LAUNCH_AGENT = os.path.expanduser("~/Library/LaunchAgents/co.nizam.app.plist")
+BUNDLE_ID = "co.nizam.app"
+APP_BUNDLE = NIZAM_DIR / "Nizam.app"
+NOTIFICATION_SOUND = "Bottle"   # the lowest-pitched of the system alert sounds
+LSREGISTER = ("/System/Library/Frameworks/CoreServices.framework/Frameworks/"
+              "LaunchServices.framework/Support/lsregister")
+
+
+def app_bundle(venv_python: Path) -> Path | None:
+    """~/.nizam/Nizam.app's executable: the venv's interpreter under Nizam's own
+    bundle id, so notifications and their clicks are Nizam's. None without a framework Python."""
+    src = Path(os.path.realpath(venv_python)).parents[1] / "Resources/Python.app/Contents/MacOS/Python"
+    if not src.exists():
+        return None
+    exe = APP_BUNDLE / "Contents" / "MacOS" / "Nizam"
+    plist_path = APP_BUNDLE / "Contents" / "Info.plist"
+    sound_src = Path(f"/System/Library/Sounds/{NOTIFICATION_SOUND}.aiff")
+    # A notification's named sound is reliably found only inside the app's own bundle.
+    sound = APP_BUNDLE / "Contents" / "Resources" / sound_src.name
+    info = {"CFBundleIdentifier": BUNDLE_ID, "CFBundleName": "Nizam", "CFBundleDisplayName": "Nizam",
+            "CFBundleExecutable": "Nizam", "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "1",
+            "LSUIElement": True, "NizamPython": str(src), "NizamSound": sound_src.name}
+    try:
+        with open(plist_path, "rb") as f:
+            if plistlib.load(f) == info and exe.exists() and (sound.exists() or not sound_src.exists()):
+                return exe
+    except (OSError, plistlib.InvalidFileException):
+        pass
+    # The copy links its Python by absolute path, so a Python upgrade means a fresh copy.
+    shutil.rmtree(APP_BUNDLE, ignore_errors=True)
+    try:
+        exe.parent.mkdir(parents=True)
+        shutil.copy2(src, exe)
+        if sound_src.exists():
+            sound.parent.mkdir()
+            shutil.copyfile(sound_src, sound)   # copy2 would carry SIP's restricted flag, which is refused
+        with open(plist_path, "wb") as f:
+            plistlib.dump(info, f)
+        if subprocess.run(["codesign", "-f", "-s", "-", str(APP_BUNDLE)], capture_output=True).returncode:
+            raise OSError("codesign failed")
+    except OSError:
+        shutil.rmtree(APP_BUNDLE, ignore_errors=True)
+        return None
+    subprocess.run([LSREGISTER, "-f", str(APP_BUNDLE)], capture_output=True)
+    return exe
 
 
 def login_enabled() -> bool:
@@ -24,8 +71,6 @@ def set_login(on: bool) -> None:
         except FileNotFoundError:
             pass
         return
-    import plistlib
-    from pathlib import Path
     root = Path(__file__).resolve().parents[1]
     plist = {
         "Label": "co.nizam.app",

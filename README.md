@@ -44,7 +44,8 @@ Nizam is the layer above the session:
   *Working*, *Your turn* and *Done*, with live counts in the menu bar. It watches the sessions you
   start yourself, in your own terminal; there is nothing to launch them from.
 - **Nothing sits blocked in silence.** A permission prompt, a question, a plan to approve or a stalled
-  run raises a notification the moment it happens, not when you next look at that tab.
+  run turns the count red the moment it happens and, if you turn notifications on, raises one,
+  not when you next look at that tab.
 - **One click back to the right place.** *Jump to* focuses the exact terminal tab of a live session;
   *Resume* reopens one that exited.
 
@@ -83,8 +84,8 @@ bin/nizam login on     # start at login
 
 1. Install, then open a terminal in any project and run `claude`. The folder appears on the board as
    an agent within a few seconds, and the session moves between *Working* and *Your turn* as you talk.
-2. Give Claude something that needs a permission. The menu bar count turns red and a notification
-   fires; **Jump to** on the board takes you to that tab.
+2. Give Claude something that needs a permission. The menu bar count turns red; **Jump to** on the
+   board takes you to that tab.
 3. In the session, say *"create an area for email"*. The agent makes `email/` with its
    `INSTRUCTIONS.md` and journal, and the board shows the area under the agent.
 4. Say *"remind us to review the backlog on Monday"*. A follow-up appears under the agent, and on
@@ -150,7 +151,10 @@ last message was wrong too often; you are the only one who knows a task is over.
   Inside a session you can say "remind me about this at 1:30" and the agent runs
   `nizam remind 1:30pm`.
 - Keys: `j`/`k` move, `Enter` jumps, `d` marks done, `s` stars, `z` sets a reminder, `n` starts a session, `Esc` closes.
-- Notifications fire when a session newly needs you, and when a follow-up with a time comes due.
+- Notifications are off until you turn them on: right-click the badge and choose *Notifications*,
+  then allow Nizam when macOS asks. They fire when a session newly needs you, and when a follow-up
+  with a time comes due. Clicking one goes where *Jump to* would: the session's terminal tab, or
+  the Claude app for a session started there.
 
 Claude Code sessions started from the Claude desktop app appear too, but without a live status
 and with Jump to opening the app rather than the chat. Regular desktop chats are not Claude Code

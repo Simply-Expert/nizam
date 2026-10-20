@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from urllib.parse import quote
 
 from AppKit import (
@@ -24,14 +25,19 @@ from AppKit import (
     NSTrackingArea, NSMutableParagraphStyle, NSParagraphStyleAttributeName, NSWindow,
     NSGraphicsContext, NSAffineTransform, NSZeroRect, NSCompositingOperationSourceOver,
 )
-from Foundation import NSURLRequest, NSPointInRect
+from Foundation import NSBundle, NSURLRequest, NSPointInRect
+from UserNotifications import (
+    UNUserNotificationCenter, UNMutableNotificationContent, UNNotificationRequest, UNNotificationSound,
+    UNAuthorizationOptionAlert, UNAuthorizationOptionSound, UNNotificationPresentationOptionBanner,
+    UNNotificationPresentationOptionList, UNNotificationPresentationOptionSound,
+)
 from WebKit import WKWebView, WKWebViewConfiguration, WKUserContentController
 import objc
 
 from . import terminal, update
 from .paths import NIZAM_DIR, ensure_dirs
 from .cli import start_update
-from .launch import PID_FILE, QUIT_FLAG, app_running, login_enabled, set_login
+from .launch import BUNDLE_ID, NOTIFICATION_SOUND, PID_FILE, QUIT_FLAG, app_running, login_enabled, set_login
 from .server import make_server
 from .state import Board
 
@@ -39,6 +45,7 @@ POPOVER_SIZE = (1080, 680)
 BOARD_MIN_SIZE = (760, 440)
 BOARD_FRAME = "NizamBoard"
 REFRESH_SECS = 3.0
+NOTIFICATION_SETTINGS = f"x-apple.systempreferences:com.apple.Notifications-Settings.extension?id={BUNDLE_ID}"
 NSPopoverBehaviorTransient = 1
 NSEventMaskLeftMouseDown = 1 << 1
 NSEventMaskRightMouseDown = 1 << 3
@@ -176,12 +183,28 @@ def _legend(counts: dict) -> str:
     return " · ".join(SEGMENTS[k][3].format(n=counts[k]) for k in _shown(counts))
 
 
-def _notify(title: str, body: str) -> None:
-    def q(s: str) -> str:
-        return s.replace("\\", "\\\\").replace('"', '\\"')
-    subprocess.Popen(["osascript", "-e",
-                      f'display notification "{q(body)}" with title "{q(title)}" sound name "Tink"'],
-                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def _bundled() -> bool:
+    return NSBundle.mainBundle().bundleIdentifier() == BUNDLE_ID
+
+
+def _notify(title: str, body: str, target: str | None = None) -> None:
+    """A click on it goes to target (a board item id), or opens the board."""
+    if not _bundled():
+        # Run outside Nizam.app, a notification's click can only ever open Script Editor.
+        def q(s: str) -> str:
+            return s.replace("\\", "\\\\").replace('"', '\\"')
+        subprocess.Popen(["osascript", "-e",
+                          f'display notification "{q(body)}" with title "{q(title)}" sound name "{NOTIFICATION_SOUND}"'],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
+    content = UNMutableNotificationContent.alloc().init()
+    content.setTitle_(title)
+    content.setBody_(body)
+    content.setSound_(UNNotificationSound.soundNamed_(f"{NOTIFICATION_SOUND}.aiff"))
+    content.setUserInfo_({"target": target or ""})
+    req = UNNotificationRequest.requestWithIdentifier_content_trigger_(target or str(uuid.uuid4()), content, None)
+    UNUserNotificationCenter.currentNotificationCenter().addNotificationRequest_withCompletionHandler_(
+        req, lambda _err: None)
 
 
 class BoardVC(NSViewController, protocols=[objc.protocolNamed("WKScriptMessageHandler")]):
@@ -569,6 +592,8 @@ class AppDelegate(NSObject):
         self._restore_badge()
         if self.board.persist.data["prefs"].get("badge", True):
             self.badge.orderFrontRegardless()
+        if _bundled():
+            UNUserNotificationCenter.currentNotificationCenter().setDelegate_(self)
         NSWorkspace.sharedWorkspace().notificationCenter().addObserver_selector_name_object_(
             self, "spaceChanged:", "NSWorkspaceActiveSpaceDidChangeNotification", None)
         self.refresh_(None)
@@ -608,7 +633,7 @@ class AppDelegate(NSObject):
                 items[s["bucket"]].append({"id": s["id"], "title": s["title"], "session": s,
                                            "sub": f"{s['agent_name']} · {s['label']} · {s['ago']}"})
             if s["bucket"] == "needs":
-                needs_now[s["id"]] = s
+                needs_now[s["id"]] = {**s, "target": s["id"]}
         for f in snap.get("followups", []):
             if f["due"] != "upcoming":
                 when = f["when"] if f["due"] == "today" else f"{-f['days']}d overdue"
@@ -617,11 +642,11 @@ class AppDelegate(NSObject):
             # A time on a follow-up asks to be noticed then.
             if f["time"] and f["due"] == "today":
                 needs_now[f["id"]] = {"agent_name": agent_names.get(f["agent"], ""),
-                                      "label": "Follow-up due", "title": f["title"]}
+                                      "label": "Follow-up due", "title": f["title"], "target": f["id"]}
         for r in snap.get("routines", []):
             if r["failing"]:
                 n = {"agent_name": agent_names.get(r["agent"], ""),
-                     "label": "Routine " + r["status"].replace("_", " "), "title": r["name"]}
+                     "label": "Routine " + r["status"].replace("_", " "), "title": r["name"], "target": r["id"]}
                 needs_now[f"{r['id']}:{r['last']['run_id']}"] = n
                 items["needs"].append({"id": r["id"], "title": r["name"], "sub": f"{n['agent_name']} · {n['label']}"})
         counts = {k: len(v) for k, v in items.items()}
@@ -636,10 +661,10 @@ class AppDelegate(NSObject):
         self.badge_view.has_update = bool(items[UPDATE])
         self.resize_badge()
         new_ids = set(needs_now) - self.seen_needs
-        if self.seeded and new_ids:
+        if self.seeded and new_ids and self._notifications_on():
             if len(new_ids) == 1:
                 s = needs_now[next(iter(new_ids))]
-                _notify(f"{s['agent_name']} needs you", f"{s['label']} · {s['title']}")
+                _notify(f"{s['agent_name']} needs you", f"{s['label']} · {s['title']}", s["target"])
             else:
                 _notify("Nizam", f"{len(new_ids)} need you")
         self.seen_needs = set(needs_now)
@@ -657,7 +682,8 @@ class AppDelegate(NSObject):
                               "sub": "Updating…" if self.updating else f"You have {self.update_info['current']} · click to update"})
         if self.board.persist.data["prefs"].get("update_notified") != latest:
             self.board.persist.set_pref("update_notified", latest)
-            _notify("Nizam", f"{latest} is available. Click ↓ on the badge to update.")
+            if self._notifications_on():
+                _notify("Nizam", f"{latest} is available. Click ↓ on the badge to update.")
 
     @objc.python_method
     def resize_badge(self):
@@ -758,12 +784,65 @@ class AppDelegate(NSObject):
             return
         self.hide_list()
         if row.get("session"):
-            launcher = self.board.persist.data["prefs"].get("launcher", "Terminal")
-            threading.Thread(target=terminal.open_session, args=(row["session"], launcher), daemon=True).start()
+            self._open_session(row["session"])
             return
         self._show_board(self.badge_view)
         if row["id"]:
             self.vc.select(row["id"])
+
+    @objc.python_method
+    def _open_session(self, s):
+        launcher = self.board.persist.data["prefs"].get("launcher", "Terminal")
+        threading.Thread(target=terminal.open_session, args=(s, launcher), daemon=True).start()
+
+    @objc.python_method
+    def _notifications_on(self):
+        return bool(self.board.persist.data["prefs"].get("notifications"))
+
+    def toggleNotifications_(self, _):
+        if self._notifications_on():
+            self.board.persist.set_pref("notifications", False)
+        elif not _bundled():
+            self.board.persist.set_pref("notifications", True)
+        else:
+            def answered(granted, _err):
+                self.performSelectorOnMainThread_withObject_waitUntilDone_(
+                    "notificationsAnswered:", bool(granted), False)
+            UNUserNotificationCenter.currentNotificationCenter().requestAuthorizationWithOptions_completionHandler_(
+                UNAuthorizationOptionAlert | UNAuthorizationOptionSound, answered)
+
+    def notificationsAnswered_(self, granted):
+        if granted:
+            self.board.persist.set_pref("notifications", True)
+            _notify("Nizam", "Notifications are on. Click one to go straight to what needs you.")
+        else:
+            # Once declined, macOS never asks again; only System Settings can allow it.
+            NSWorkspace.sharedWorkspace().openURL_(NSURL.URLWithString_(NOTIFICATION_SETTINGS))
+
+    def userNotificationCenter_willPresentNotification_withCompletionHandler_(self, _center, _note, done):
+        # While the board is open Nizam is the frontmost app, and macOS would otherwise hold the banner back.
+        done(UNNotificationPresentationOptionBanner | UNNotificationPresentationOptionList
+             | UNNotificationPresentationOptionSound)
+
+    def userNotificationCenter_didReceiveNotificationResponse_withCompletionHandler_(self, _center, response, done):
+        target = response.notification().request().content().userInfo().get("target")
+        done()
+        self.performSelectorOnMainThread_withObject_waitUntilDone_("notificationClicked:", target or None, False)
+
+    def notificationClicked_(self, target):
+        if target:
+            try:
+                s = next((s for s in self.board.snapshot()["sessions"] if s["id"] == target), None)
+            except Exception as e:
+                sys.stderr.write(f"notification click failed: {e}\n")
+                s = None
+            if s:
+                self._open_session(s)
+                return
+        badge_on = self.board.persist.data["prefs"].get("badge", True)
+        self._show_board(self.badge_view if badge_on else self.status.button())
+        if target:
+            self.vc.select(target)
 
     def badgeClicked_(self, view):
         self.hide_list()
@@ -900,6 +979,9 @@ class AppDelegate(NSObject):
         pinned = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Keep board open", "togglePinned:", "")
         pinned.setState_(1 if self._pinned() else 0)
         menu.addItem_(pinned)
+        notifications = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Notifications", "toggleNotifications:", "")
+        notifications.setState_(1 if self._notifications_on() else 0)
+        menu.addItem_(notifications)
         menu.addItem_(NSMenuItem.separatorItem())
         if self.update_info:
             item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
