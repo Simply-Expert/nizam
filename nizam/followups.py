@@ -85,6 +85,14 @@ def _when(days: int, due: str, clock: str, timed: bool) -> str:
     return day
 
 
+def prompt(f: dict) -> str:
+    """The first message of a session started on this follow-up."""
+    when = f["date"] + (" " + f["time"] if f.get("time") else "")
+    return (f"Follow-up due {when}: {f['title']}\n\n{(f.get('body') or '')[:1500]}\n\n"
+            "This comes from FOLLOWUPS.md. When it is handled, record the outcome where it belongs "
+            "and delete the item from that file.")
+
+
 def for_agent(agent, hour: tuple[int, int] = DEFAULT_HOUR, now: float | None = None) -> list[dict]:
     """Follow-ups at the agent root and inside each of its areas.
 

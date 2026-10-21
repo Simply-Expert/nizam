@@ -28,6 +28,7 @@ CLAUDE_DIR = Path.home() / ".claude"
 CLAUDE_PROJECTS = CLAUDE_DIR / "projects"
 CLAUDE_SESSIONS = CLAUDE_DIR / "sessions"      # runtime status files (Claude >= 2.1.158)
 CLAUDE_SETTINGS = CLAUDE_DIR / "settings.json"
+CLAUDE_JSON = Path.home() / ".claude.json"
 SKILL_DST = CLAUDE_DIR / "skills" / "nizam" / "SKILL.md"
 DESKTOP_SESSIONS = Path.home() / "Library" / "Application Support" / "Claude" / "claude-code-sessions"
 _DESKTOP_ID = re.compile(r"^local_[A-Za-z0-9-]{1,64}$")
@@ -505,11 +506,27 @@ class Claude(Provider):
         return HeadlessResult(text=str(ev.get("result") or ""), is_error=bool(ev.get("is_error")),
                               cost=ev.get("total_cost_usd"), turns=ev.get("num_turns"))
 
+    @staticmethod
+    def _chrome() -> list[str]:
+        # remote-control leaves Claude in Chrome off in the sessions it spawns, whatever /chrome says.
+        try:
+            on = json.loads(CLAUDE_JSON.read_text(encoding="utf-8")).get("claudeInChromeDefaultEnabled")
+        except (OSError, ValueError, AttributeError):
+            on = False
+        return ["--chrome"] if on is True else []
+
     def remote_command(self, exe: str, name: str, permission_mode: str) -> list[str]:
         cmd = [exe, "remote-control", "--name", name]
         if permission_mode in self.permission_modes and permission_mode != "default":
             cmd += ["--permission-mode", permission_mode]
-        return cmd
+        return cmd + self._chrome()
+
+    def remote_task_command(self, exe: str, name: str, permission_mode: str, prompt: str) -> list[str]:
+        # An interactive session needs a terminal; script gives it one and copies the screen to the log.
+        cmd = ["/usr/bin/script", "-q", "/dev/null", exe, "--remote-control", name]
+        if permission_mode in self.permission_modes and permission_mode != "default":
+            cmd += ["--permission-mode", permission_mode]
+        return cmd + self._chrome() + ["--", prompt]
 
     def remote_links(self, output: str) -> tuple[str | None, str | None]:
         # The status is redrawn over and over, so the newest mention of each wins.

@@ -84,8 +84,11 @@ class Bot(unittest.TestCase):
         for p in self.patches:
             p.stop()
 
-    def fake_wake(self, root, name, mode="default", provider=None):
-        self.woken.append((str(root), name, mode))
+    def fake_wake(self, root, name, mode="default", provider=None, **task):
+        self.woken.append((str(root), name, mode, *([task] if task else [])))
+        if task:
+            return {"root": str(root), "name": name, "started": time.time(),
+                    "session_url": "https://claude.ai/code/session_T", "page_url": None}
         return {"root": str(root), "name": name, "started": time.time(),
                 "session_url": "https://claude.ai/code/session_X", "page_url": "https://claude.ai/code?environment=env_Y"}
 
@@ -179,26 +182,51 @@ class Bot(unittest.TestCase):
         self.message("/status")
         self.assertEqual(self.tg.texts()[-1], "Nothing needs you.")
 
+    def followup(self, fid, root, title, due, days, when, area=None):
+        return {"id": "f:" + fid, "agent": root, "area": area, "cwd": root + (f"/{area}" if area else ""),
+                "title": title, "body": "Details.", "date": "2026-10-20", "time": None, "due": due, "days": days,
+                "when": when}
+
     def test_followups(self):
-        self.board.agents[1]["awake"] = time.time()
         self.board.followups = [
-            {"agent": "/w/marketing", "area": "newsletter", "title": "Send the draft", "due": "overdue", "days": -2,
-             "when": "2d late"},
-            {"agent": "/w/finance", "area": None, "title": "Pay VAT", "due": "today", "days": 0, "when": "today"},
-            {"agent": "/w/marketing", "area": None, "title": "Book the venue", "due": "upcoming", "days": 3,
-             "when": "in 3d"},
-            {"agent": "/w/finance", "area": None, "title": "Year end", "due": "upcoming", "days": 40,
-             "when": "in 40d"}]
+            self.followup("a1", "/w/marketing", "Send the draft", "overdue", -2, "2d late", area="newsletter"),
+            self.followup("b2", "/w/finance", "Pay VAT", "today", 0, "today"),
+            self.followup("c3", "/w/marketing", "Book the venue", "upcoming", 3, "in 3d"),
+            self.followup("d4", "/w/finance", "Year end", "upcoming", 40, "in 40d")]
         self.message("/followups")
         sent = self.tg.said("sendMessage")[-1]
-        self.assertEqual(sent["text"], "Follow-ups\n\nDue now (2)\n• Marketing: Send the draft [newsletter], 2d late"
-                                       "\n• Finance: Pay VAT, today\n\nComing up (1)\n• Marketing: Book the venue, in 3d")
+        self.assertEqual(sent["text"], "Follow-ups\n\nDue now (2)\n1. Marketing: Send the draft [newsletter], 2d late"
+                                       "\n2. Finance: Pay VAT, today\n\nComing up (1)\n• Marketing: Book the venue, in 3d"
+                                       "\n\nTap one to start its agent on it.")
         self.assertEqual(sent["reply_markup"]["inline_keyboard"],
-                         [[{"text": "Wake Marketing", "callback_data": "w:" + T.key_of("/w/marketing")}]])
+                         [[{"text": "1. Send the draft", "callback_data": "f:a1"}],
+                          [{"text": "2. Pay VAT", "callback_data": "f:b2"}]])
         self.message("/followups finance")
-        self.assertEqual(self.tg.texts()[-1], "Follow-ups for Finance\n\nDue now (1)\n• Pay VAT, today")
+        self.assertEqual(self.tg.texts()[-1], "Follow-ups for Finance\n\nDue now (1)\n1. Pay VAT, today"
+                                              "\n\nTap one to start its agent on it.")
         self.message("/followups fin ops")
         self.assertEqual(self.tg.texts()[-1], "No follow-ups for Fin Ops in the next 7 days.")
+
+    def test_a_followup_button_starts_its_agent_on_it(self):
+        self.board.followups = [self.followup("a1", "/w/marketing", "Send the draft", "overdue", -2, "2d late",
+                                              area="newsletter")]
+        self.press("f:a1")
+        root, name, mode, task = self.woken[0]
+        self.assertEqual((root, name, mode), ("/w/marketing", "Marketing", "acceptEdits"))
+        self.assertEqual((task["task"], task["title"], task["cwd"]), ("a1", "Send the draft",
+                                                                      Path("/w/marketing/newsletter")))
+        self.assertTrue(task["prompt"].startswith("Follow-up due 2026-10-20: Send the draft\n\nDetails."))
+        self.assertEqual(self.tg.said("answerCallbackQuery")[-1]["text"], "Starting Marketing…")
+        edit = self.tg.said("editMessageText")[-1]
+        self.assertEqual(edit["text"], "Marketing is on “Send the draft”. Open it in the Claude app.")
+        self.assertEqual(edit["reply_markup"]["inline_keyboard"],
+                         [[{"text": "Open session", "url": "https://claude.ai/code/session_T"}]])
+        self.board.followups = []
+        self.press("f:a1")
+        self.assertEqual(len(self.woken), 1)
+        self.assertIn("no longer in its FOLLOWUPS.md", self.tg.texts()[-1])
+        self.press("f:a1", user=STRANGER)
+        self.assertEqual(len(self.woken), 1)
 
     def test_pairing(self):
         T.save_config({"token": "TOKEN", "bot": "nizam_bot"})
@@ -309,6 +337,36 @@ class Bot(unittest.TestCase):
         self.assertEqual([a["root"] for a in T.match(agents, "finops")], ["/w/fin-ops"])
         self.assertEqual([a["root"] for a in T.match(agents, "keting")], ["/w/marketing"])
         self.assertEqual(T.match(agents, ""), [])
+
+
+class Dial(unittest.TestCase):
+    def test_ipv4_goes_first_and_a_dead_address_costs_only_the_connect_wait(self):
+        import socket
+        tried = []
+
+        class Sock:
+            def __init__(self, family, kind, proto):
+                self.family, self.timeouts = family, []
+
+            def settimeout(self, t):
+                self.timeouts.append(t)
+
+            def connect(self, addr):
+                tried.append(addr[0])
+                if addr[0] == "1.2.3.4":
+                    raise TimeoutError
+
+            def close(self):
+                pass
+
+        infos = [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2001::9", 443, 0, 0)),
+                 (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.2.3.4", 443)),
+                 (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("5.6.7.8", 443))]
+        with mock.patch.object(T.socket, "getaddrinfo", lambda *a, **k: infos), \
+             mock.patch.object(T.socket, "socket", Sock):
+            sock = T._dial(("api.telegram.org", 443), 65)
+        self.assertEqual(tried, ["1.2.3.4", "5.6.7.8"])
+        self.assertEqual(sock.timeouts, [T.CONNECT_SECS, 65])
 
 
 class Structured(unittest.TestCase):

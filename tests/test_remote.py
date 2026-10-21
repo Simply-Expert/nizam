@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -37,6 +38,9 @@ class FakeRemote(Claude):
     def remote_command(self, exe, name, permission_mode):
         return [exe, str(self.script), "--name", name]
 
+    def remote_task_command(self, exe, name, permission_mode, prompt):
+        return ["/usr/bin/env", exe, str(self.script), "--task", name, prompt]
+
 
 class Remote(unittest.TestCase):
     def setUp(self):
@@ -70,6 +74,28 @@ class Remote(unittest.TestCase):
         self.assertTrue(remote.stop(self.agent))
         self.assertEqual(remote.awake(), {})
         self.assertFalse(remote.stop(self.agent))
+        self.assertRaises(ProcessLookupError, os.kill, rec["pid"], 0)
+
+    def test_a_task_gets_a_session_of_its_own(self):
+        area = self.agent / "newsletter"
+        area.mkdir()
+        server = remote.wake(self.agent, "Marketing", provider="fake")
+        rec = remote.wake(self.agent, "Marketing", provider="fake", task="a1", prompt="Send it", title="Send the draft",
+                          cwd=area)
+        self.assertNotEqual(rec["pid"], server["pid"])
+        self.assertEqual(rec["session_url"], "https://claude.ai/code/session_FIRST")
+        self.assertEqual(rec["argv"][:2], [str(self.server), "--task"])
+        self.assertEqual(remote.awake()[str(self.agent)]["pid"], server["pid"])
+        again = remote.wake(self.agent, "Marketing", provider="fake", task="a1", prompt="Send it", cwd=area)
+        self.assertEqual((again["already"], again["pid"]), (True, rec["pid"]))
+        self.assertTrue(remote.stop(self.agent))
+        self.assertEqual(remote.awake(), {})
+        self.assertRaises(ProcessLookupError, os.kill, rec["pid"], 0)
+
+    def test_a_task_alone_keeps_its_agent_awake(self):
+        rec = remote.wake(self.agent, "Marketing", provider="fake", task="a1", prompt="Send it", title="Send the draft")
+        self.assertEqual(remote.awake()[str(self.agent)]["name"], "Marketing")
+        self.assertTrue(remote.stop(self.agent))
         self.assertRaises(ProcessLookupError, os.kill, rec["pid"], 0)
 
     def test_a_server_that_exits_says_why(self):
@@ -106,12 +132,27 @@ class Remote(unittest.TestCase):
 
 
 class ClaudeRemote(unittest.TestCase):
+    def setUp(self):
+        from nizam.providers import claude
+        self.cfg = Path(tempfile.mkdtemp()) / ".claude.json"
+        p = mock.patch.object(claude, "CLAUDE_JSON", self.cfg)
+        p.start()
+        self.addCleanup(p.stop)
+
     def test_remote_command(self):
         c = Claude()
         self.assertEqual(c.remote_command("/bin/claude", "Marketing", "default"),
                          ["/bin/claude", "remote-control", "--name", "Marketing"])
         self.assertEqual(c.remote_command("/bin/claude", "M", "acceptEdits")[-2:], ["--permission-mode", "acceptEdits"])
         self.assertNotIn("--permission-mode", c.remote_command("/bin/claude", "M", "yolo"))
+
+    def test_phone_sessions_follow_the_macs_chrome_setting(self):
+        self.cfg.write_text(json.dumps({"claudeInChromeDefaultEnabled": True}))
+        c = Claude()
+        self.assertEqual(c.remote_command("/bin/claude", "VA", "default"),
+                         ["/bin/claude", "remote-control", "--name", "VA", "--chrome"])
+        self.assertEqual(c.remote_task_command("/bin/claude", "VA: Pay VAT", "default", "-do it")[3:],
+                         ["/bin/claude", "--remote-control", "VA: Pay VAT", "--chrome", "--", "-do it"])
 
     def test_remote_links_take_the_newest(self):
         out = ("https://claude.ai/code?environment=env_A1\n"

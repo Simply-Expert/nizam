@@ -294,7 +294,9 @@ bot:   Marketing is awake. Open it in the Claude app.   [Open session] [New sess
 ```
 
 The bot understands `/wake`, `/sleep`, `/agents`, `/status`, `/followups` and `/notify`. `/wake` and `/sleep` without a name show
-one button per agent. Anything else you write, such as *"wake the one that does invoices"*, goes through
+one button per agent. `/followups` numbers the ones due now, with a button each. Tapping one starts
+a session in that follow-up's folder, the way *Start session* does on the board, and the session is
+already working on the follow-up when you open it in the app. Anything else you write, such as *"wake the one that does invoices"*, goes through
 one quick headless Claude call (Haiku, no tools, nothing saved). That call can only pick one of those
 four actions and one of your agents; the bot then runs it.
 

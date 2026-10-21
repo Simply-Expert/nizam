@@ -158,6 +158,10 @@ class Provider:
         """argv for a server that lets the phone start sessions in its cwd, or None if the tool has none."""
         return None
 
+    def remote_task_command(self, exe: str, name: str, permission_mode: str, prompt: str) -> list[str] | None:
+        """argv for one session the phone can join, already working on prompt, or None if the tool has none."""
+        return None
+
     def remote_links(self, output: str) -> tuple[str | None, str | None]:
         """(the session the server opened, the page that starts new ones), as far as its output tells."""
         return None, None

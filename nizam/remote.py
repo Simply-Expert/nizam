@@ -1,8 +1,9 @@
 """Agents awake for the phone: one remote server per agent folder.
 
 The server lets the Claude app on a phone start sessions in the agent's
-folder. Each runs in its own process group so it outlives a restart of
-Nizam, and awake.json remembers it so the next Nizam can find and stop it.
+folder; a task, such as a follow-up, gets a session of its own that starts
+on its prompt. Each runs in its own process group so it outlives a restart
+of Nizam, and awake.json remembers it so the next Nizam can find and stop it.
 """
 from __future__ import annotations
 
@@ -63,27 +64,34 @@ def _running(rec: dict) -> bool:
     return bool(rec.get("argv")) and rec["argv"][0] in out
 
 
-def awake() -> dict[str, dict]:
-    """Agent root -> its server's record, for the servers still running."""
+def _live() -> dict[str, dict]:
     with _lock:
         d = _read()
-        live = {root: r for root, r in d.items() if _running(r)}
+        live = {k: r for k, r in d.items() if _running(r)}
         if live != d:
             _write(live)
         return live
 
 
+def awake() -> dict[str, dict]:
+    """Agent root -> its server's record, or its oldest task session's, for those still running."""
+    out: dict[str, dict] = {}
+    for key, rec in sorted(_live().items(), key=lambda kv: (kv[0] != kv[1]["root"], kv[1]["started"])):
+        out.setdefault(rec["root"], rec)
+    return out
+
+
 def _save(rec: dict) -> None:
     with _lock:
         d = _read()
-        d[rec["root"]] = rec
+        d[rec.get("key", rec["root"])] = rec
         _write(d)
 
 
-def _forget(root: str) -> dict | None:
+def _forget(key: str) -> dict | None:
     with _lock:
         d = _read()
-        rec = d.pop(root, None)
+        rec = d.pop(key, None)
         if rec is not None:
             _write(d)
         return rec
@@ -115,24 +123,31 @@ def tail(text: str, lines: int = 6) -> str:
     return "\n".join(out[-lines:])
 
 
-def wake(root: Path, name: str, permission_mode: str = "default", provider: str | None = None) -> dict:
-    """Start the agent's server, or find the one already running, and wait until the phone can reach it."""
-    key = str(root)
+def wake(root: Path, name: str, permission_mode: str = "default", provider: str | None = None, *,
+         task: str = "", prompt: str = "", title: str = "", cwd: Path | None = None) -> dict:
+    """Start the agent's server, or find the one already running, and wait until the phone can reach it.
+
+    With a task, start instead a session of its own in cwd that begins on the prompt; pressing
+    the same task again finds that session while it runs.
+    """
+    key = f"{root}#{task}" if task else str(root)
     with _lock:
         gate = _waking.setdefault(key, threading.Lock())
     with gate:
-        rec = awake().get(key)
+        rec = _live().get(key)
         if rec:
             return {**_relinked(rec), "already": True}
-        if not root.is_dir():
+        cwd = cwd or root
+        if not root.is_dir() or not cwd.is_dir():
             raise WakeError("That agent's folder is missing.")
         p = providers.get(provider)
         env = clean_env()
         env["PATH"] = login_path()
         exe = shutil.which(p.cli, path=env["PATH"])
-        argv = p.remote_command(exe, name, permission_mode) if exe else None
         if not exe:
             raise WakeError(f"The {p.cli} command was not found on the login shell's PATH.")
+        argv = (p.remote_task_command(exe, f"{name}: {title}" if title else name, permission_mode, prompt)
+                if task else p.remote_command(exe, name, permission_mode))
         if not argv:
             raise WakeError(f"{p.cli} cannot be reached from the phone.")
         REMOTE_DIR.mkdir(parents=True, exist_ok=True)
@@ -140,14 +155,17 @@ def wake(root: Path, name: str, permission_mode: str = "default", provider: str 
         log.write_bytes(b"")
         # Append mode, so trim() can empty the file under the running server.
         with open(log, "ab") as out:
-            proc = subprocess.Popen(argv, cwd=key, env=env, stdin=subprocess.DEVNULL, stdout=out,
+            proc = subprocess.Popen(argv, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL, stdout=out,
                                     stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
         threading.Thread(target=proc.wait, daemon=True).start()
         if shutil.which("caffeinate"):
             # -s holds a closed lid only on AC power; on battery macOS sleeps anyway.
             subprocess.Popen(["caffeinate", "-i", "-s", "-w", str(proc.pid)], **_DETACHED)
-        rec = {"root": key, "name": name, "pid": proc.pid, "argv": argv[1:], "provider": p.name,
-               "log": str(log), "started": time.time(), "session_url": None, "page_url": None}
+        # What follows the tool itself is what _running() looks for, even under a wrapper.
+        rec = {"key": key, "root": str(root), "name": name, "pid": proc.pid, "argv": argv[argv.index(exe) + 1:],
+               "provider": p.name, "log": str(log), "started": time.time(), "session_url": None, "page_url": None}
+        if task:
+            rec.update(task=task, title=title)
         _save(rec)
         deadline, connected = time.time() + CONNECT_WAIT, None
         while time.time() < deadline:
@@ -163,7 +181,7 @@ def wake(root: Path, name: str, permission_mode: str = "default", provider: str 
                 _save(rec)
                 return rec
         last = tail(_log_text(log))
-        stop(root)
+        _stop(_forget(key))
         raise WakeError(f"It did not connect within {CONNECT_WAIT}s." + (f"\n{last}" if last else ""))
 
 
@@ -178,8 +196,12 @@ def _alive(pid: int) -> bool:
 
 
 def stop(root: Path) -> bool:
-    """Stop the agent's server and every session it started; False when none was running."""
-    rec = _forget(str(root))
+    """Stop the agent's server, every session it started and its task sessions; False when none was running."""
+    keys = [k for k, r in _read().items() if r.get("root") == str(root)]
+    return any([_stop(_forget(k)) for k in keys])
+
+
+def _stop(rec: dict | None) -> bool:
     if not rec or not _running(rec):
         return False
     pid = int(rec["pid"])
@@ -199,7 +221,7 @@ def stop(root: Path) -> bool:
 
 def trim() -> None:
     """Keep each server's newest links, and its log from growing without end."""
-    for rec in awake().values():
+    for rec in _live().values():
         log = Path(rec["log"])
         try:
             size = log.stat().st_size

@@ -8,22 +8,23 @@ the conversation itself never passes through it.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import os
 import re
 import secrets
 import shutil
+import socket
+import ssl
 import subprocess
 import sys
 import threading
 import time
 import traceback
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
 
-from . import providers, remote
+from . import followups as followups_mod, providers, remote
 from .paths import NIZAM_DIR
 from .requests import ago, load_links
 from .runner import login_path
@@ -32,12 +33,14 @@ from .terminal import clean_env
 
 CONFIG_FILE = NIZAM_DIR / "telegram.json"        # the bot's token, the paired accounts and the phone settings
 STATE_FILE = NIZAM_DIR / "telegram-state.json"   # where polling got to, and pairing codes; the app writes it
-API = "https://api.telegram.org/bot{token}/{method}"
+API_HOST = "api.telegram.org"
+CONNECT_SECS = 4
 POLL_SECS = 50
 STALE_AFTER = 10 * 60          # a command sent while the Mac slept is not acted on hours later
 PAIR_TTL = 10 * 60
 MAX_PENDING = 5
 FOLLOWUPS_AHEAD = 7
+FOLLOWUP_BUTTONS = 8
 HOUSEKEEP_EVERY = 60
 DEFAULT_IDLE_HOURS = 3
 DEFAULT_PERMISSION_MODE = "acceptEdits"
@@ -56,7 +59,7 @@ HELP = ("I wake your agents so you can talk to them in the Claude app.\n\n"
         "/sleep: put an awake agent back to sleep\n"
         "/agents: your agents, and which are awake\n"
         "/status: what needs you right now\n"
-        "/followups: follow-ups due now and this week\n"
+        "/followups: follow-ups due now and this week; tap one to start its agent on it\n"
         "/followups marketing: just that agent's\n"
         "/notify: message you when something needs you\n\n"
         "You can also just write, like “wake the one that does invoices”.")
@@ -78,20 +81,70 @@ class TelegramError(Exception):
         self.code = code
 
 
+def _dial(address: tuple, timeout: float | None, source_address=None) -> socket.socket:
+    """IPv4 first, with a short wait for each address: on a network that drops IPv6,
+    trying it first would cost the whole timeout on every new connection."""
+    infos = sorted(socket.getaddrinfo(*address, type=socket.SOCK_STREAM), key=lambda i: i[0] != socket.AF_INET)
+    err: OSError = OSError(f"no address for {address[0]}")
+    for family, kind, proto, _, addr in infos:
+        sock = socket.socket(family, kind, proto)
+        sock.settimeout(CONNECT_SECS)
+        try:
+            sock.connect(addr)
+        except OSError as e:
+            sock.close()
+            err = e
+            continue
+        sock.settimeout(timeout)
+        return sock
+    raise err
+
+
+_idle: list[http.client.HTTPSConnection] = []
+_idle_lock = threading.Lock()
+_tls = ssl.create_default_context()
+
+
+def _post(path: str, data: bytes, wait: float) -> tuple[int, bytes]:
+    """POST over a kept-alive connection, so most calls skip the connect and TLS round trips."""
+    with _idle_lock:
+        conn = _idle.pop() if _idle else None
+    for attempt in (0, 1):
+        reused = conn is not None
+        if conn is None:
+            conn = http.client.HTTPSConnection(API_HOST, timeout=wait, context=_tls)
+            conn._create_connection = _dial
+        conn.timeout = wait
+        if conn.sock:
+            conn.sock.settimeout(wait)
+        try:
+            conn.request("POST", path, body=data, headers={"Content-Type": "application/json"})
+            r = conn.getresponse()
+            status, body = r.status, r.read()
+        except (http.client.HTTPException, OSError) as e:
+            conn.close()
+            conn = None
+            # Telegram may have closed it while it sat idle; a timeout could mean the call went through.
+            if reused and not attempt and isinstance(e, (http.client.RemoteDisconnected, ConnectionResetError,
+                                                         BrokenPipeError)):
+                continue
+            raise
+        with _idle_lock:
+            _idle.append(conn)
+        return status, body
+    raise OSError("unreachable")
+
+
 def call(token: str, method: str, wait: float = 15, **params) -> Any:
     """One Bot API call; its result, or TelegramError. The token never appears in the error."""
-    req = urllib.request.Request(API.format(token=token, method=method), data=json.dumps(params).encode(),
-                                 headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=wait) as r:
-            body = json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        try:
-            body = json.loads(e.read())
-        except ValueError:
-            raise TelegramError(f"HTTP {e.code}", e.code) from None
-    except (urllib.error.URLError, OSError, ValueError) as e:
-        raise TelegramError(str(getattr(e, "reason", e))) from None
+        status, raw = _post(f"/bot{token}/{method}", json.dumps(params).encode(), wait)
+    except (http.client.HTTPException, OSError) as e:
+        raise TelegramError(str(e) or type(e).__name__) from None
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        raise TelegramError(f"HTTP {status}", status) from None
     if not isinstance(body, dict) or not body.get("ok"):
         raise TelegramError(str(body.get("description") if isinstance(body, dict) else "") or "request failed",
                             int(body.get("error_code") or 0) if isinstance(body, dict) else 0)
@@ -446,8 +499,12 @@ class Bot:
         mine = (q.get("from") or {}).get("id") in (self.cfg.get("users") or [])
         chat = ((q.get("message") or {}).get("chat") or {}).get("id")
         verb, _, key = str(q.get("data") or "").partition(":")
+        fu = None
+        if verb == "f" and mine:
+            fu = next((f for f in self.board.snapshot().get("followups") or [] if f["id"] == "f:" + key), None)
+            key = key_of(fu["agent"]) if fu else ""
         agent = next((a for a in self.agents() if key_of(a["root"]) == key), None) if mine else None
-        toast = {"w": "Waking {}…", "s": "Putting {} to sleep…"}.get(verb, "") if agent else ""
+        toast = {"w": "Waking {}…", "s": "Putting {} to sleep…", "f": "Starting {}…"}.get(verb, "") if agent else ""
         try:
             self.api(self.cfg["token"], "answerCallbackQuery", callback_query_id=q["id"],
                      text=toast.format(agent["display_name"]) if toast else "")
@@ -455,8 +512,12 @@ class Bot:
             pass
         if not mine or not chat:
             return
-        if not agent:
+        if verb == "f" and not fu:
+            self.send(chat, "That follow-up is no longer in its FOLLOWUPS.md. /followups lists the ones that are.")
+        elif not agent:
             self.send(chat, "That agent is no longer on the board. /agents lists the ones that are.")
+        elif verb == "f":
+            self.start_followup(chat, agent, fu)
         elif verb == "w":
             self.wake(chat, "", agent)
         elif verb == "s":
@@ -502,6 +563,24 @@ class Bot:
             text = f"{name} has been awake for {ago(time.time() - rec['started'])}. Open it in the Claude app."
         else:
             text = f"{name} is awake. Open it in the Claude app."
+        self.edit(chat, msg, text, links)
+
+    def start_followup(self, chat: int, agent: dict, f: dict) -> None:
+        name, title = agent["display_name"], f["title"][:60]
+        msg = self.send(chat, f"Starting {name} on “{title}”…")
+        mode = self.cfg.get("permission_mode", DEFAULT_PERMISSION_MODE)
+        try:
+            rec = remote.wake(Path(agent["root"]), name, mode, task=f["id"][2:], prompt=followups_mod.prompt(f),
+                              title=title, cwd=Path(f["cwd"]))
+        except remote.WakeError as e:
+            self.edit(chat, msg, f"I couldn't start {name} on “{title}”.\n\n{e}")
+            return
+        self.board.invalidate()
+        links = [[{"text": "Open session", "url": rec["session_url"]}]] if rec.get("session_url") else []
+        if rec.get("already"):
+            text = f"{name} has been on “{title}” for {ago(time.time() - rec['started'])}. Open it in the Claude app."
+        else:
+            text = f"{name} is on “{title}”. Open it in the Claude app."
         self.edit(chat, msg, text, links)
 
     def sleep(self, chat: int, query: str, agent: dict | None = None) -> None:
@@ -570,22 +649,22 @@ class Bot:
             self.send(chat, f"No follow-ups{whose} in the next {FOLLOWUPS_AHEAD} days.")
             return
 
-        def line(f: dict) -> str:
+        def line(f: dict, mark: str) -> str:
             who = "" if agent else agents.get(f["agent"], {}).get("display_name", "") + ": "
             where = f" [{f['area']}]" if f.get("area") else ""
-            return f"• {who}{f['title'][:80]}{where}, {f['when']}"
+            return f"{mark} {who}{f['title'][:80]}{where}, {f['when']}"
 
         due = [f for f in items if f["due"] != "upcoming"]
         later = [f for f in items if f["due"] == "upcoming"]
         parts = []
         if due:
-            parts.append(f"Due now ({len(due)})\n" + "\n".join(line(f) for f in due[:15]))
+            parts.append(f"Due now ({len(due)})\n" + "\n".join(line(f, f"{i}.") for i, f in enumerate(due[:15], 1)))
         if later:
-            parts.append(f"Coming up ({len(later)})\n" + "\n".join(line(f) for f in later[:15]))
-        sleepy = [agents[r] for r in dict.fromkeys(f["agent"] for f in due)
-                  if r in agents and not agents[r].get("awake")]
-        buttons = [[{"text": f"Wake {a['display_name']}", "callback_data": f"w:{key_of(a['root'])}"}]
-                   for a in sleepy[:6]]
+            parts.append(f"Coming up ({len(later)})\n" + "\n".join(line(f, "•") for f in later[:15]))
+        buttons = [[{"text": f"{i}. {f['title'][:40]}", "callback_data": f"f:{f['id'][2:]}"}]
+                   for i, f in enumerate(due[:FOLLOWUP_BUTTONS], 1)]
+        if buttons:
+            parts.append("Tap one to start its agent on it.")
         self.send(chat, f"Follow-ups{whose}\n\n" + "\n\n".join(parts), buttons or None)
 
     def notify(self, chat: int, mode: str) -> None:
