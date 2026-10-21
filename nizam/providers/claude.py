@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import quote, urlencode
 
 from ..paths import NIZAM_DIR
 from .base import (ACTIVITY, ANSWERED, ENDED, NEEDS, TURN_DONE, WORKING, HeadlessResult, Limit, Provider, Runtime,
@@ -69,6 +70,9 @@ NEEDS_EVENTS = {
 EVENT_KINDS = {"UserPromptSubmit": WORKING, "PostToolUse": WORKING, "SessionStart": WORKING,
                "Stop": TURN_DONE, "SessionEnd": ENDED, "ElicitationResult": ANSWERED}
 ENV_MARKERS = ("AI_AGENT", "ENABLE_CLAUDEAI_MCP_SERVERS")
+QUICK_MODEL = "haiku"
+_RC_SESSION = re.compile(r"https://claude\.ai/code/session_[A-Za-z0-9]+")
+_RC_ENVIRONMENT = re.compile(r"https://claude\.ai/code\?environment=env_[A-Za-z0-9]+")
 
 
 def _pid_alive(pid: int) -> bool:
@@ -465,6 +469,10 @@ class Claude(Provider):
                 return f"claude://code/continue?session={own}&source=nizam"
         return None
 
+    def desktop_new_url(self, cwd: str, prompt: str = "") -> str | None:
+        q = {"folder": cwd, **({"q": prompt} if prompt else {}), "source": "nizam"}
+        return "claude://code/new?" + urlencode(q, quote_via=quote)
+
     def clean_env(self, env: dict[str, str]) -> dict[str, str]:
         # A child that inherits CLAUDE_CODE_CHILD_SESSION refuses to save transcripts.
         return {k: v for k, v in env.items() if not (k.startswith("CLAUDE") or k in ENV_MARKERS)}
@@ -496,3 +504,28 @@ class Claude(Provider):
             return None
         return HeadlessResult(text=str(ev.get("result") or ""), is_error=bool(ev.get("is_error")),
                               cost=ev.get("total_cost_usd"), turns=ev.get("num_turns"))
+
+    def remote_command(self, exe: str, name: str, permission_mode: str) -> list[str]:
+        cmd = [exe, "remote-control", "--name", name]
+        if permission_mode in self.permission_modes and permission_mode != "default":
+            cmd += ["--permission-mode", permission_mode]
+        return cmd
+
+    def remote_links(self, output: str) -> tuple[str | None, str | None]:
+        # The status is redrawn over and over, so the newest mention of each wins.
+        sessions, pages = _RC_SESSION.findall(output), _RC_ENVIRONMENT.findall(output)
+        return (sessions[-1] if sessions else None), (pages[-1] if pages else None)
+
+    def structured_command(self, exe: str, system_prompt: str, schema: dict) -> list[str]:
+        # --bare would be quicker still, but it only signs in with an API key, not a subscription.
+        return [exe, "-p", "--model", QUICK_MODEL, "--tools", "", "--no-session-persistence",
+                "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands",
+                "--output-format", "json", "--json-schema", json.dumps(schema), "--system-prompt", system_prompt]
+
+    def structured_result(self, stdout: str) -> dict | None:
+        try:
+            ev = json.loads(stdout)
+        except ValueError:
+            return None
+        out = ev.get("structured_output") if isinstance(ev, dict) and not ev.get("is_error") else None
+        return out if isinstance(out, dict) else None

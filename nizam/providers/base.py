@@ -129,6 +129,10 @@ class Provider:
         """Deep link that opens this session in desktop_app, if the app holds it."""
         return None
 
+    def desktop_new_url(self, cwd: str, prompt: str = "") -> str | None:
+        """Deep link that opens desktop_app on a new session in cwd, the prompt typed but not sent."""
+        return None
+
     def clean_env(self, env: dict[str, str]) -> dict[str, str]:
         """env without the markers a session of this tool leaves for its children."""
         return env
@@ -148,4 +152,19 @@ class Provider:
 
     def headless_result(self, line: str) -> HeadlessResult | None:
         """The final result, if this line of output is it."""
+        return None
+
+    def remote_command(self, exe: str, name: str, permission_mode: str) -> list[str] | None:
+        """argv for a server that lets the phone start sessions in its cwd, or None if the tool has none."""
+        return None
+
+    def remote_links(self, output: str) -> tuple[str | None, str | None]:
+        """(the session the server opened, the page that starts new ones), as far as its output tells."""
+        return None, None
+
+    def structured_command(self, exe: str, system_prompt: str, schema: dict) -> list[str] | None:
+        """argv for one quick answer shaped by `schema`, with no tools and nothing saved; the prompt goes on stdin."""
+        return None
+
+    def structured_result(self, stdout: str) -> dict | None:
         return None

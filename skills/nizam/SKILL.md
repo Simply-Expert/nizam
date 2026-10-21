@@ -228,7 +228,8 @@ The prompt: numbered steps, the files to read first, the exact output wanted, an
   `permission_mode` are optional. `enabled: false` pauses it without deleting the file.
 - `command: node scripts/collect.mjs`: makes it a **script routine**. The command runs through `sh` in
   the folder that holds `routines/`, with the login PATH and the `env_file`; Claude is not involved and it
-  costs nothing. Success is exit code 0, the board shows the end of its output, and the body of the
+  costs nothing. Success is exit code 0 (a last output line `OUTCOME: NO_CHANGE` or
+  `OUTCOME: NEEDS_ATTENTION - <what>` says more), the board shows the end of its output, and the body of the
   file is just a description (what it collects, what reads the result). Use it for collectors, exports
   and checks that need no judgement. Only for scripts that live in this agent and feed it; Nizam is not
   a general cron. Make the script exit non-zero on failure and safe to run twice.
@@ -240,12 +241,15 @@ The prompt: numbered steps, the files to read first, the exact output wanted, an
 1. Write the file. Write the prompt for a run with nobody watching: it must never ask a question or
    wait for approval, it says how it learns what earlier runs already did (so a second run the same day
    reports only what is new), and it is safe to run twice. Do not add date handling or an
-   `OUTCOME:` instruction: the runner injects the current date/time and requires the final
-   `OUTCOME: COMPLETE` / `OUTCOME: INCOMPLETE - <reason>` line itself.
+   `OUTCOME:` instruction: the runner injects the current date/time and requires the final line itself:
+   `OUTCOME: COMPLETE`, `OUTCOME: NO_CHANGE` (checked, nothing to do), `OUTCOME: NEEDS_ATTENTION - <what>`
+   or `OUTCOME: INCOMPLETE - <reason>`. For a routine that watches something (an inbox, a metric, a
+   deadline), do say in the prompt what is worth the user's attention: a run that finds it shows under
+   *Needs you* until the user dismisses it, and a run that finds nothing new stays quiet.
 2. Pick a minute that is not :00 or :30 and not one another routine of this agent uses; routines of
    one agent run one at a time, so a shared minute only makes the second one late.
 3. Run `nizam run routines/<name>.md` once and read the result. Fix the prompt or the tool list
-   until it reports `completed`.
+   until it reports `completed`, `no_change` or `needs_attention`.
 4. Run `nizam routines sync` to install the schedule. Run it again after every change to a
    `schedule:` or `enabled:` line, and after deleting a routine file. Editing only the prompt needs no sync.
 
@@ -302,5 +306,5 @@ Migrate one routine at a time, the least important first.
 ### `routine list` / why did it fail
 `nizam routines list` prints each routine's state, next run and last result. For a failure, read the
 last lines of the log it names under `~/.nizam/routines/logs/`; the statuses are `completed`,
-`incomplete` (the run said so, or ended without an OUTCOME line, usually because it asked a question),
-`errored`, `timed_out`.
+`no_change`, `needs_attention` (the run worked and found something for the user), `incomplete` (the run
+said so, or ended without an OUTCOME line, usually because it asked a question), `errored`, `timed_out`.

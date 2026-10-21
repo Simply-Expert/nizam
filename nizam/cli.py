@@ -170,7 +170,96 @@ def doctor() -> int:
     for i in issues:
         print("  !", i)
     ok &= not issues
+    _say(phone_lines())
     return 0 if ok else 1
+
+
+def phone_lines() -> list[str]:
+    from . import remote, telegram
+    from .requests import ago
+    cfg = telegram.load_config()
+    users = cfg.get("users") or []
+    if not cfg.get("token"):
+        lines = ["telegram: off (nizam telegram setup <token> turns it on)"]
+    elif users:
+        notify = {"away": f"messages you when something needs you and the Mac has been untouched for "
+                          f"{cfg.get('away_minutes', telegram.DEFAULT_AWAY_MINUTES):g} min",
+                  "always": "messages you every time something needs you"}.get(cfg.get("notify", "off"),
+                                                                             "only answers (nizam telegram notify on)")
+        lines = [f"telegram: @{cfg.get('bot')}, {len(users)} paired account{'s' if len(users) > 1 else ''}; {notify}"]
+    else:
+        lines = [f"telegram: @{cfg.get('bot')}, not paired yet: message the bot, then run nizam telegram pair <code>"]
+    for root, rec in remote.awake().items():
+        lines.append(f"  awake for the phone: {rec['name']} ({root}), {ago(time.time() - rec['started'])}")
+    return lines
+
+
+def telegram_cmd(action: str, args: list[str]) -> int:
+    from . import telegram
+    from .launch import app_running
+    if action == "setup":
+        if not args:
+            print("usage: nizam telegram setup <token>  (the token @BotFather gave you)", file=sys.stderr)
+            return 2
+        try:
+            me = telegram.setup(args[0])
+        except telegram.TelegramError as e:
+            print(f"Telegram refused that token: {e}", file=sys.stderr)
+            return 1
+        bot = me.get("username")
+        print(f"✓ @{bot} is set up")
+        if not telegram.load_config().get("users"):
+            print(f"  Now send any message to @{bot} on Telegram. It replies with a code; then run:"
+                  "\n  nizam telegram pair <code>")
+    elif action == "pair":
+        if not args:
+            print("usage: nizam telegram pair <code>", file=sys.stderr)
+            return 2
+        try:
+            p = telegram.pair(args[0])
+        except ValueError as e:
+            print(f"not paired: {e}", file=sys.stderr)
+            return 1
+        print(f"✓ paired {p.get('name') or p['user']}; the bot ignores every other Telegram account")
+    elif action == "notify":
+        mode = {"on": "away"}.get(args[0], args[0]) if args else ""
+        if mode not in telegram.NOTIFY_MODES:
+            print("usage: nizam telegram notify on|always|off  (on: only once the Mac has been untouched a while)",
+                  file=sys.stderr)
+            return 2
+        if not telegram.load_config().get("token"):
+            print("no bot is set up; run: nizam telegram setup <token>", file=sys.stderr)
+            return 1
+        telegram.configure(notify=mode)
+    elif action == "off":
+        telegram.CONFIG_FILE.unlink(missing_ok=True)
+        print("✓ telegram is off; agents already awake stay awake until you run nizam sleep in their folder")
+        return 0
+    _say(phone_lines())
+    if telegram.load_config().get("token") and not app_running():
+        print("! the Nizam app is not running, so nothing reads the bot's messages; start it with: nizam app --detach")
+    return 0
+
+
+def wake_cmd(where: str, stop: bool) -> int:
+    from . import remote, telegram
+    from .agents import find_agent_root
+    from .state import Persisted
+    root = find_agent_root(Path(where).resolve())
+    name = Persisted().data.get("agents", {}).get(str(root), {}).get("name") or root.name
+    if stop:
+        print(f"{name} is asleep" if remote.stop(root) else f"{name} wasn't awake")
+        return 0
+    try:
+        rec = remote.wake(root, name, telegram.load_config().get("permission_mode", telegram.DEFAULT_PERMISSION_MODE))
+    except remote.WakeError as e:
+        print(f"could not wake {name}: {e}", file=sys.stderr)
+        return 1
+    print(f"{name} {'was already' if rec.get('already') else 'is'} awake; open it in the Claude app")
+    for label, key in (("session", "session_url"), ("new session", "page_url")):
+        if rec.get(key):
+            print(f"  {label}: {rec[key]}")
+    return 0
 
 
 def routines_cmd(action: str, where: str) -> int:
@@ -337,6 +426,13 @@ def main(argv: list[str] | None = None) -> int:
     fu = sub.add_parser("followups", help="hour [<time>]: when follow-ups without a time come up (default 10:00)")
     fu.add_argument("action", choices=("hour",))
     fu.add_argument("when", nargs="*", help="10am, 20:00, 8pm")
+    tg = sub.add_parser("telegram", help="wake agents from Telegram: setup <token> | pair <code> | notify on|always|off | status | off")
+    tg.add_argument("action", choices=("setup", "pair", "notify", "status", "off"))
+    tg.add_argument("args", nargs="*")
+    for verb, about in (("wake", "make this agent reachable from the Claude app on your phone"),
+                        ("sleep", "stop this agent being reachable from the phone")):
+        wk = sub.add_parser(verb, help=about)
+        wk.add_argument("path", nargs="?", default=".", help="a folder inside the agent (default: here)")
     lg = sub.add_parser("login", help="start at login: on | off | status")
     lg.add_argument("state", choices=("on", "off", "status"))
     a = p.parse_args(argv)
@@ -362,6 +458,10 @@ def main(argv: list[str] | None = None) -> int:
         return remind_cmd(a.when, a.session)
     if a.cmd == "followups":
         return followups_cmd(a.action, a.when)
+    if a.cmd == "telegram":
+        return telegram_cmd(a.action, a.args)
+    if a.cmd in ("wake", "sleep"):
+        return wake_cmd(a.path, stop=a.cmd == "sleep")
     if a.cmd == "login":
         from .launch import login_enabled, set_login
         if a.state != "status":

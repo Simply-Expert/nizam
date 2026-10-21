@@ -25,6 +25,7 @@ from . import requests as requests_mod
 from . import routines as routines_mod
 from . import providers
 from . import reminders as reminders_mod
+from . import remote as remote_mod
 from .providers.base import ENDED, NEEDS, ACTIVITY, TURN_DONE, WORKING, Runtime, Transcript
 from .paths import EVENTS_FILE, STATE_FILE, ensure_dirs
 
@@ -309,6 +310,33 @@ def _ago(secs: float) -> str:
     return f"{secs // 86400}d"
 
 
+def needs_you(snap: dict) -> dict[str, dict]:
+    """What newly asks for the person, keyed so the same thing keeps its key: blocked sessions,
+    timed follow-ups due today, and routine runs that failed or found something."""
+    names = {a["root"]: a["display_name"] for a in snap["agents"]}
+    out: dict[str, dict] = {}
+    for s in snap["sessions"]:
+        if s["bucket"] == "needs":
+            out[s["id"]] = {"kind": "session", "agent": s["agent"], "agent_name": s["agent_name"], "label": s["label"],
+                            "title": s["title"], "target": s["id"]}
+    for f in snap.get("followups", []):
+        # A time on a follow-up asks to be noticed then.
+        if f["time"] and f["due"] == "today":
+            out[f["id"]] = {"kind": "followup", "agent": f["agent"], "agent_name": names.get(f["agent"], ""),
+                            "label": "Follow-up due",
+                            "title": f["title"], "target": f["id"]}
+    for r in snap.get("routines", []):
+        base = {"kind": "routine", "agent": r["agent"], "agent_name": names.get(r["agent"], ""), "target": r["id"]}
+        if r["failing"]:
+            out[f"{r['id']}:{r['last']['run_id']}"] = {**base, "label": "Routine " + r["status"].replace("_", " "),
+                                                       "title": r["name"]}
+        if r["attention"]:
+            what = next((l for l in r["attention"]["summary"].splitlines() if l.strip()), "")
+            out[f"{r['id']}:{r['attention']['run_id']}"] = {**base, "label": r["name"],
+                                                            "title": what[:120] or "needs attention"}
+    return out
+
+
 class Board:
     def __init__(self) -> None:
         self.hooks = HookTail()
@@ -440,6 +468,10 @@ class Board:
         for root, o in overrides.items():
             if o.get("pinned") and root not in agents and Path(root).is_dir():
                 agents[root] = agents_mod.load_agent(Path(root)).to_dict()
+        awake = remote_mod.awake()
+        for root in awake:
+            if root not in agents and Path(root).is_dir():
+                agents[root] = agents_mod.load_agent(Path(root)).to_dict()
         requests = requests_mod.board_rows(now)
         for q in requests:
             if q["agent"] not in agents and Path(q["agent"]).is_dir():
@@ -457,6 +489,7 @@ class Board:
             o = overrides.get(a["root"], {})
             a["display_name"] = o.get("name") or a["name"]
             a["pinned"] = bool(o.get("pinned"))
+            a["awake"] = awake[a["root"]]["started"] if a["root"] in awake else None
         for s in sessions:
             s["agent_name"] = agents[s["agent"]]["display_name"]
         limits = [{"provider": p.name, **asdict(l)} for p in providers.active() for l in p.limits(now)]

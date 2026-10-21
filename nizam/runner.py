@@ -35,12 +35,16 @@ HEADLESS = (
     "You are running unattended as the scheduled routine \"{name}\". Nobody is watching and nobody "
     "can answer you: never ask a question, never wait for confirmation, never offer options to choose "
     "from. Do the work the routine describes. If something blocks you, say exactly what it was and stop.\n"
-    "Your reply must end with one final line, exactly `OUTCOME: COMPLETE` when the routine's work was "
-    "done, or `OUTCOME: INCOMPLETE - <reason>` when it was not."
+    "Your reply must end with one final line, exactly one of:\n"
+    "`OUTCOME: COMPLETE` when the routine's work was done;\n"
+    "`OUTCOME: NO_CHANGE` when you checked and there was nothing to do;\n"
+    "`OUTCOME: NEEDS_ATTENTION - <what>` when the work was done and turned up something new the user should "
+    "see or decide, said in one line;\n"
+    "`OUTCOME: INCOMPLETE - <reason>` when the work was not done."
 )
 
 
-def _login_path() -> str:
+def login_path() -> str:
     """launchd hands jobs a bare PATH; ask the user's login shell for the real one."""
     extra = [str(Path.home() / ".local/bin"), *(str(d) for p in providers.active() for d in p.cli_dirs),
              "/opt/homebrew/bin", "/usr/local/bin"]
@@ -140,8 +144,10 @@ def _script(r: R.Routine, env: dict, log: Path) -> dict:
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
                             start_new_session=True)
     timed_out, slept = _watch(proc, r.timeout, log, on_line)
-    status = R.decide_status(timed_out, proc.returncode, False, "complete")
-    out = "\n".join(tail).strip()
+    outcome, reason, out = R.parse_outcome("\n".join(tail))
+    status = R.decide_status(timed_out, proc.returncode, False, outcome or "complete")
+    if reason:
+        out = f"{reason}\n\n{out}"
     if status == "timed_out":
         summary = _timeout_note(r, slept) + (f"\n\n{out}" if out else "")
     elif status == "errored":
@@ -243,7 +249,7 @@ def run(path: str, scheduled: bool = False) -> int:
     env = clean_env()
     if r.meta.get("env_file"):
         env.update(R.read_env_file(r.cwd / r.meta["env_file"]))
-    env["PATH"] = _login_path()
+    env["PATH"] = login_path()
     env["NIZAM_ROUTINE"] = r.id
     p = providers.get(r.meta.get("provider"))
     exe = "" if r.command else shutil.which(p.cli, path=env["PATH"])
@@ -279,5 +285,5 @@ def run(path: str, scheduled: bool = False) -> int:
     except Exception as e:  # the record must never be left at "running"
         return finish("errored", f"The runner failed: {e!r}", 1, sessions=sessions)
     status = res.pop("status")
-    return finish(status, res.pop("summary"), 0 if status == "completed" else 1,
+    return finish(status, res.pop("summary"), 1 if status in R.FAILED else 0,
                   sessions=sessions, attempts=max(1, len(sessions)), **res)

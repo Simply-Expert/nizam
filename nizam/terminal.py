@@ -209,7 +209,15 @@ end tell"""
     return "ok" in _osascript(script)
 
 
-LAUNCHERS = ("Terminal", "Ghostty")
+DESKTOP = "Claude"
+TERMINALS = ("Terminal", "Ghostty")
+LAUNCHERS = (*TERMINALS, DESKTOP)
+
+
+def terminal_for(prefs: dict) -> str:
+    """The terminal for what the Claude app cannot take: resuming, worktrees, sessions that must start in plan mode."""
+    launcher = prefs.get("launcher", "Terminal")
+    return launcher if launcher in TERMINALS else prefs.get("terminal", "Terminal")
 
 
 def run_in_new_terminal(shell_cmd: str, paste_only: bool = False, launcher: str = "Terminal",
@@ -249,10 +257,17 @@ def open_session(s: dict, launcher: str = "Terminal", paste_only: bool = False) 
 def start(cwd: str, prompt: str = "", permission_mode: str = "acceptEdits",
           worktree: bool = False, paste_only: bool = False, launcher: str = "Terminal",
           provider: str | None = None) -> str | None:
-    """Start a new session in a new Terminal window. Where the CLI takes
+    """Start a new session in a new terminal window, or in the Claude app, where the
+    prompt waits for the user to send it. Where the CLI takes
     one, the session id is minted here, so the caller knows which
     transcript belongs to this launch before it even appears."""
     p = providers.get(provider)
+    if launcher == DESKTOP:
+        url = p.desktop_new_url(cwd, prompt)
+        if url:
+            subprocess.Popen(["open", url], env=clean_env(), **_DETACHED)
+            return None
+        launcher = "Terminal"
     sid = str(uuid.uuid4()) if p.takes_session_id else None
     cmd = p.start_command(sid, prompt, permission_mode)
     if worktree:

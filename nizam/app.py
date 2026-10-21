@@ -34,12 +34,12 @@ from UserNotifications import (
 from WebKit import WKWebView, WKWebViewConfiguration, WKUserContentController
 import objc
 
-from . import terminal, update
+from . import telegram, terminal, update
 from .paths import NIZAM_DIR, ensure_dirs
 from .cli import start_update
 from .launch import BUNDLE_ID, NOTIFICATION_SOUND, PID_FILE, QUIT_FLAG, app_running, login_enabled, set_login
 from .server import make_server
-from .state import Board
+from .state import Board, needs_you
 
 POPOVER_SIZE = (1080, 680)
 BOARD_MIN_SIZE = (760, 440)
@@ -233,14 +233,27 @@ class BoardVC(NSViewController, protocols=[objc.protocolNamed("WKScriptMessageHa
 
     def userContentController_didReceiveScriptMessage_(self, _ucc, message):
         body = message.body()
-        if body is not None and "pin" in body:
-            # Re-hosting the web view from inside its own callback is asking for trouble.
-            self.delegate.performSelector_withObject_afterDelay_("applyPinned:", bool(body["pin"]), 0.0)
+        if body is None:
+            return
+        # Re-hosting the web view from inside its own callback is asking for trouble.
+        for key, sel in (("pin", "applyPinned:"), ("badge", "applyBadge:"), ("notifications", "applyNotifications:")):
+            if key in body:
+                self.delegate.performSelector_withObject_afterDelay_(sel, bool(body[key]), 0.0)
+        if "update" in body:
+            self.delegate.performSelector_withObject_afterDelay_("startUpdate:", None, 0.0)
 
     @objc.python_method
-    def reload(self, select=None):
-        url = f"http://127.0.0.1:{self.port}/?embed=1" + (f"&select={quote(select, safe='')}" if select else "")
+    def reload(self, select=None, settings=False):
+        url = (f"http://127.0.0.1:{self.port}/?embed=1" + (f"&select={quote(select, safe='')}" if select else "")
+               + ("&settings=1" if settings else ""))
         self.web.loadRequest_(NSURLRequest.requestWithURL_(NSURL.URLWithString_(url)))
+
+    @objc.python_method
+    def show_settings(self):
+        if self.web.isLoading():
+            self.reload(settings=True)
+        else:
+            self.web.evaluateJavaScript_completionHandler_("openSettings()", None)
 
     @objc.python_method
     def select(self, item_id):
@@ -626,29 +639,22 @@ class AppDelegate(NSObject):
             sys.stderr.write(f"refresh failed: {e}\n")
             return
         items = {k: [] for k in SEGMENTS}
-        needs_now = {}
+        needs_now = needs_you(snap)
         agent_names = {a["root"]: a["display_name"] for a in snap["agents"]}
         for s in snap["sessions"]:
             if s["bucket"] in items:
                 items[s["bucket"]].append({"id": s["id"], "title": s["title"], "session": s,
                                            "sub": f"{s['agent_name']} · {s['label']} · {s['ago']}"})
-            if s["bucket"] == "needs":
-                needs_now[s["id"]] = {**s, "target": s["id"]}
         for f in snap.get("followups", []):
             if f["due"] != "upcoming":
                 when = f["when"] if f["due"] == "today" else f"{-f['days']}d overdue"
                 items["due"].append({"id": f["id"], "title": f["title"],
                                      "sub": f"{agent_names.get(f['agent'], '')} · {when}"})
-            # A time on a follow-up asks to be noticed then.
-            if f["time"] and f["due"] == "today":
-                needs_now[f["id"]] = {"agent_name": agent_names.get(f["agent"], ""),
-                                      "label": "Follow-up due", "title": f["title"], "target": f["id"]}
         for r in snap.get("routines", []):
-            if r["failing"]:
-                n = {"agent_name": agent_names.get(r["agent"], ""),
-                     "label": "Routine " + r["status"].replace("_", " "), "title": r["name"], "target": r["id"]}
-                needs_now[f"{r['id']}:{r['last']['run_id']}"] = n
-                items["needs"].append({"id": r["id"], "title": r["name"], "sub": f"{n['agent_name']} · {n['label']}"})
+            if r["failing"] or r["attention"]:
+                why = "Routine " + r["status"].replace("_", " ") if r["failing"] else "Needs attention"
+                items["needs"].append({"id": r["id"], "title": r["name"],
+                                       "sub": f"{agent_names.get(r['agent'], '')} · {why}"})
         counts = {k: len(v) for k, v in items.items()}
         limits = snap.get("limits", [])
         items[LIMITS] = _limit_rows(limits)
@@ -792,7 +798,7 @@ class AppDelegate(NSObject):
 
     @objc.python_method
     def _open_session(self, s):
-        launcher = self.board.persist.data["prefs"].get("launcher", "Terminal")
+        launcher = terminal.terminal_for(self.board.persist.data["prefs"])
         threading.Thread(target=terminal.open_session, args=(s, launcher), daemon=True).start()
 
     @objc.python_method
@@ -818,6 +824,12 @@ class AppDelegate(NSObject):
         else:
             # Once declined, macOS never asks again; only System Settings can allow it.
             NSWorkspace.sharedWorkspace().openURL_(NSURL.URLWithString_(NOTIFICATION_SETTINGS))
+        self.vc.refresh()
+
+    def applyNotifications_(self, on):
+        if bool(on) != self._notifications_on():
+            self.toggleNotifications_(None)
+        self.vc.refresh()
 
     def userNotificationCenter_willPresentNotification_withCompletionHandler_(self, _center, _note, done):
         # While the board is open Nizam is the frontmost app, and macOS would otherwise hold the banner back.
@@ -948,12 +960,15 @@ class AppDelegate(NSObject):
         self._remove_monitor()
 
     def toggleBadge_(self, _):
-        on = not self.board.persist.data["prefs"].get("badge", True)
-        self.board.persist.set_pref("badge", on)
+        self.applyBadge_(not self.board.persist.data["prefs"].get("badge", True))
+
+    def applyBadge_(self, on):
+        self.board.persist.set_pref("badge", bool(on))
         if on:
             self.badge.orderFrontRegardless()
         else:
             self.badge.orderOut_(None)
+        self.vc.refresh()
 
     def statusClicked_(self, sender):
         ev = NSApp.currentEvent()
@@ -982,6 +997,7 @@ class AppDelegate(NSObject):
         notifications = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Notifications", "toggleNotifications:", "")
         notifications.setState_(1 if self._notifications_on() else 0)
         menu.addItem_(notifications)
+        menu.addItem_(NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Settings…", "openSettings:", ","))
         menu.addItem_(NSMenuItem.separatorItem())
         if self.update_info:
             item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
@@ -1001,6 +1017,11 @@ class AppDelegate(NSObject):
 
     def openBrowser_(self, _):
         NSWorkspace.sharedWorkspace().openURL_(NSURL.URLWithString_(f"http://127.0.0.1:{self.port}/"))
+
+    def openSettings_(self, _):
+        badge_on = self.board.persist.data["prefs"].get("badge", True)
+        self._show_board(self.badge_view if badge_on else self.status.button())
+        self.vc.show_settings()
 
     def reloadBoard_(self, _):
         self.vc.view()
@@ -1054,6 +1075,7 @@ def run(port: int) -> int:
     board = Board()
     httpd = make_server(board, port)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    telegram.start(board)
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
     delegate = AppDelegate.alloc().initWithBoard_port_(board, port)

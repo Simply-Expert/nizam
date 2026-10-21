@@ -62,6 +62,9 @@ class Outcome(unittest.TestCase):
         self.assertEqual(R.parse_outcome("Did it.\nOUTCOME: COMPLETE"), ("complete", "", "Did it."))
         self.assertEqual(R.parse_outcome("x\n**OUTCOME: INCOMPLETE - Jira is down**")[:2], ("incomplete", "Jira is down"))
         self.assertEqual(R.parse_outcome("Shall I proceed?")[0], None)
+        self.assertEqual(R.parse_outcome("Inbox read.\nOUTCOME: NO_CHANGE"), ("no_change", "", "Inbox read."))
+        self.assertEqual(R.parse_outcome("OUTCOME: Needs attention - Acme invoice 40 days late")[:2],
+                         ("needs_attention", "Acme invoice 40 days late"))
 
     def test_status(self):
         self.assertEqual(R.decide_status(True, -15, False, None), "timed_out")
@@ -69,6 +72,31 @@ class Outcome(unittest.TestCase):
         self.assertEqual(R.decide_status(False, 0, True, "complete"), "errored")
         self.assertEqual(R.decide_status(False, 0, False, None), "incomplete")
         self.assertEqual(R.decide_status(False, 0, False, "complete"), "completed")
+        self.assertEqual(R.decide_status(False, 0, False, "no_change"), "no_change")
+        self.assertEqual(R.decide_status(False, 0, False, "needs_attention"), "needs_attention")
+        self.assertEqual(R.decide_status(False, 1, False, "needs_attention"), "errored")
+
+    def test_attention_waits_for_dismiss(self):
+        root = Path(tempfile.mkdtemp())
+        (root / "CLAUDE.md").write_text("agent")
+        (root / "routines").mkdir()
+        (root / "routines" / "inbox.md").write_text("---\nschedule: hourly :00\n---\nTriage the inbox.\n")
+        runs = root / "runs.jsonl"
+        with mock.patch.object(R, "RUNS_FILE", runs), mock.patch.object(R, "ROUTINES_DIR", root), \
+                mock.patch.object(R, "installed", lambda: {}):
+            agent = R.agents_mod.load_agent(root)
+            rid = R.for_agent_root(agent)[0].id
+            row = lambda acks={}: R.board_rows(agent, acks)[0]
+            R.record({"run_id": f"20261021-090000-{rid}", "routine": rid, "status": "needs_attention",
+                      "summary": "Acme invoice 40 days late\n\nDetails."})
+            R.record({"run_id": f"20261021-100000-{rid}", "routine": rid, "status": "no_change", "summary": "Nothing."})
+            r = row()
+            self.assertEqual((r["status"], r["failing"], r["attention"]["summary"].splitlines()[0]),
+                             ("no_change", False, "Acme invoice 40 days late"))
+            self.assertIsNone(row({rid: f"20261021-100000-{rid}"})["attention"])
+            R.record({"run_id": f"20261021-110000-{rid}", "routine": rid, "status": "errored", "summary": "boom"})
+            r = row({rid: f"20261021-100000-{rid}"})
+            self.assertEqual((r["failing"], r["attention"]), (True, None))
 
     def test_resumed_session_settles_the_run(self):
         runs = Path(tempfile.mkdtemp()) / "runs.jsonl"

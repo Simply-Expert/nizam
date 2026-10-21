@@ -64,7 +64,8 @@ That clones the code to `~/.nizam/src`, installs Claude Code hooks into `~/.clau
 plan usage), builds a small PyObjC venv, links a `nizam` command, and starts the
 app. It installs the newest tagged release, or set `NIZAM_REF=main` to follow development. Nothing
 needs an API key, and the only thing Nizam asks the network is one `git ls-remote` a day against the
-repo it was cloned from, to see whether a newer release exists.
+repo it was cloned from, to see whether a newer release exists. If you turn on the
+[Telegram bot](#from-your-phone), Nizam also keeps one request open to Telegram for its messages.
 
 When one does, a blue arrow appears on the badge: click it, or right-click and choose *Update to
 vX.Y.Z*, or run `nizam update`. That moves the checkout to the newest tag, reinstalls the hooks and
@@ -129,6 +130,10 @@ last message was wrong too often; you are the only one who knows a task is over.
 - **Keep it open**: the board closes when you click away. The 📌 next to the Nizam name (or *Keep
   board open* in the right-click menu) turns it into a regular window that stays until you close it;
   the badge then brings it to the front. Unpin to go back.
+- **Settings**: the ⚙ next to the Nizam name (or *Settings…* in the right-click menu, or ⌘,) shows
+  every setting in one place and lets you change it: Mac and Telegram notifications, connecting and
+  pairing the Telegram bot, phone sessions, when untimed follow-ups come up, start at login, the
+  floating badge, which terminal new sessions open in, and updates.
 - **Jump to** focuses the live session's tab (Terminal.app, iTerm, Ghostty 1.3+). **Resume** reopens
   an exited one with `claude --resume`. **New here** starts a session in that agent and area with
   your last-used settings; ⌥-click for the full dialog (prompt, permission mode, git worktree,
@@ -140,7 +145,9 @@ last message was wrong too often; you are the only one who knows a task is over.
   the file: the agent records the outcome and deletes its own line.
 - **Routines** appear under an agent's follow-ups with their next run and last result. A run that
   errored, timed out, or ended without confirming its work counts under *Needs you*, notifies, and
-  shows in *All agents* until it succeeds or you dismiss it. **Run now** starts one by hand,
+  shows in *All agents* until it succeeds or you dismiss it. So does a run that worked and found
+  something for you, such as an overdue invoice in the inbox it triages; that one stays until you
+  dismiss it, even if later runs find nothing new. **Run now** starts one by hand,
   **Open last run** resumes that run as a normal session, **Sync schedule** installs a new schedule.
 - **Clear** marks every *Closed* session in the current view as done; hovering a Closed row shows a Done button.
 - **Star** a session from its title in the detail pane; it gets a ★ and a gold edge in the list.
@@ -151,8 +158,8 @@ last message was wrong too often; you are the only one who knows a task is over.
   Inside a session you can say "remind me about this at 1:30" and the agent runs
   `nizam remind 1:30pm`.
 - Keys: `j`/`k` move, `Enter` jumps, `d` marks done, `s` stars, `z` sets a reminder, `n` starts a session, `Esc` closes.
-- Notifications are off until you turn them on: right-click the badge and choose *Notifications*,
-  then allow Nizam when macOS asks. They fire when a session newly needs you, and when a follow-up
+- Notifications are off until you turn them on in Settings (or right-click the badge and choose
+  *Notifications*), then allow Nizam when macOS asks. They fire when a session newly needs you, and when a follow-up
   with a time comes due. Clicking one goes where *Jump to* would: the session's terminal tab, or
   the Claude app for a session started there.
 
@@ -242,12 +249,16 @@ whether or not the Nizam app is running, and a slot missed while the Mac slept r
   sleep resumes on wake instead of being killed
 - `caffeinate` so idle sleep does not cut a run short, and on AC power neither does closing the lid
 - one retry when a run fails within 90 seconds, which is what a run fired on wake before the network is up looks like
-- every run must end with `OUTCOME: COMPLETE`. A headless run that stops to ask "shall I proceed?"
-  exits 0 having done nothing; here it is reported as *incomplete*
+- every run must end with an `OUTCOME:` line. A headless run that stops to ask "shall I proceed?"
+  exits 0 having done nothing; here it is reported as *incomplete*. The line also says how it went:
+  `COMPLETE`, `NO_CHANGE` (it checked and there was nothing to do, so the board stays quiet),
+  `NEEDS_ATTENTION - <what>` (it found something you should see, so it goes under *Needs you*) or
+  `INCOMPLETE - <reason>`
 - the full stream of each run in `~/.nizam/routines/logs`, kept 30 days
 
 **Script routines.** A `command:` line in the header runs a script instead of Claude, for collectors and
-checks that need no judgement. Same schedule, PATH, timeout, log and board; success is exit code 0.
+checks that need no judgement. Same schedule, PATH, timeout, log and board; success is exit code 0, and a script can end its output
+with an `OUTCOME: NO_CHANGE` or `OUTCOME: NEEDS_ATTENTION - <what>` line like a Claude run.
 
 ```markdown
 ---
@@ -268,6 +279,60 @@ Schedules: `manual`, `daily 09:30, 16:00`, `mon, wed 08:00`, `sat-thu 09:30` (ra
 `monthly 1 09:00`, `hourly :15`, `hourly :15 08-22` (only those hours), joined with `;`. Local time. A slot missed while the Mac was powered
 off or logged out is not made up.
 
+## From your phone
+
+Away from the Mac, you can wake an agent from Telegram and then talk to it in the Claude app on your
+phone. Telegram only reaches Nizam, and only to wake agents, put them back to sleep and show what needs
+you. The conversation happens in the Claude app, through Claude Code's Remote
+Control: waking an agent runs
+`claude remote-control` in its folder, and that folder then shows up in the app.
+
+```
+you:   /wake marketing
+bot:   Waking Marketing…
+bot:   Marketing is awake. Open it in the Claude app.   [Open session] [New session]
+```
+
+The bot understands `/wake`, `/sleep`, `/agents`, `/status`, `/followups` and `/notify`. `/wake` and `/sleep` without a name show
+one button per agent. Anything else you write, such as *"wake the one that does invoices"*, goes through
+one quick headless Claude call (Haiku, no tools, nothing saved). That call can only pick one of those
+four actions and one of your agents; the bot then runs it.
+
+Setting it up takes two minutes:
+
+1. On Telegram, message [@BotFather](https://t.me/BotFather), send `/newbot`, and copy the token it gives you.
+2. Run `nizam telegram setup <token>`.
+3. Send any message to your new bot. It replies with a code. Run `nizam telegram pair <code>`.
+
+From then on the bot answers only that Telegram account and ignores everyone else. Nizam asks Telegram for
+new messages by long polling, so the connection only ever goes out from the Mac. Nothing at home is open
+to the internet, and it costs about one small request a minute. A command that arrives more than 10
+minutes late, because the Mac was asleep or offline, is not acted on; the bot says so instead.
+
+While an agent is awake:
+
+- the board shows 📱 beside it. Right-click any agent to *Wake for the phone* before you leave, or to
+  *Put to sleep*. `nizam wake` and `nizam sleep` do the same from a terminal in the agent's folder.
+- `caffeinate` keeps the Mac from idle sleep, and on AC power from sleeping with the lid closed.
+  The Mac still has to be awake for the bot to see a `/wake` in the first place.
+- it goes back to sleep on its own after 3 hours with no session activity, and the bot tells you.
+  A session that is working or waiting on you keeps it awake.
+- its server outlives a restart or update of Nizam, which finds it again afterwards.
+
+Sessions start in `acceptEdits` mode. Settings, under *Phone*, changes that and the idle time; so do
+`permission_mode` (`default`, `acceptEdits`, `plan`, `auto`) and `idle_hours` (`0` for never) in
+`~/.nizam/telegram.json`. Settings can also connect and pair the bot instead of the commands below.
+The bot can also message you first. `/notify on` (or `nizam telegram notify on`) sends you what newly
+needs you: a blocked session, a routine that failed or found something, a follow-up due at its time.
+It waits until the Mac has gone untouched for 5 minutes, so you don't get a buzz on your phone for
+what is already on your screen; anything still waiting once you walk away is sent then. Each thing is
+sent once. A follow-up or routine finding comes with a button to wake its agent. `/notify always`
+sends straight away, `/notify off` stops it, and Settings (or `away_minutes` in
+`~/.nizam/telegram.json`) changes the wait.
+
+Give the bot a token of its own: Telegram hands each bot's messages to one reader only, so sharing a
+token with another tool, such as Claude Code's Telegram channel plugin, makes the two fight over them.
+
 ## Commands
 
 ```
@@ -286,6 +351,11 @@ nizam request peers   the agents this one may write to
 nizam request send <peer> <what>   leave a request; the user decides when it is seen
 nizam request list    requests waiting for this agent, and what it sent
 nizam request done <id> [note]   close a request; a note, when one is really needed, goes back via the board
+nizam telegram setup <token>   connect the bot @BotFather made
+nizam telegram pair <code>     let the Telegram account that got this code use the bot
+nizam telegram notify on|always|off   message you when something needs you: once you're away, every time, or never
+nizam telegram status|off      what is set up and awake; or stop answering Telegram
+nizam wake | nizam sleep       make this agent reachable from the Claude app on your phone, or stop it
 nizam login on|off    start at login (LaunchAgent)
 nizam doctor          check wiring, and say whether a newer release exists
 nizam update          move to the newest release, reinstall the hooks, restart the app
@@ -301,6 +371,8 @@ nizam update --check  only say whether a newer release exists
 | `~/.nizam/routines` | Routine run records (`runs.jsonl`, with the tail of each run's final reply), per-run logs, locks. Treat as private. |
 | `~/.nizam/requests` | `links.md` (who may write to whom; yours to edit) and `requests.jsonl` (every request, refusal and outcome). Treat as private. |
 | `~/Library/LaunchAgents/co.nizam.routine.*` | One per scheduled routine; written by `nizam routines sync`, removed by `nizam uninstall` |
+| `~/.nizam/telegram.json` | The bot's token and the paired Telegram accounts, readable only by you. `telegram-state.json` beside it holds where polling got to and pairing codes. |
+| `~/.nizam/remote` | `awake.json` (which agents are awake, and their links) and each server's log, trimmed as it grows |
 | `~/.nizam/update.json` | The last update check: installed version, newest version, when. `update.log` beside it holds updates started from the badge. |
 | `~/.nizam/venv` | PyObjC for the Mac shell |
 | `~/.nizam/src` | The code, when installed with the one-liner |

@@ -366,7 +366,7 @@ class Headless(Case):
         for p in (mock.patch.object(routines, "LOCKS_DIR", store / "locks"),
                   mock.patch.object(routines, "LOGS_DIR", store / "logs"),
                   mock.patch.object(routines, "record", self.records.append),
-                  mock.patch.object(runner, "_login_path", lambda: str(self.bin)),
+                  mock.patch.object(runner, "login_path", lambda: str(self.bin)),
                   mock.patch.object(runner, "POLL", 0.05), mock.patch.object(runner, "RETRY_DELAY", 0),
                   mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "outer", "AI_AGENT": "x"})):
             p.start()
@@ -453,6 +453,17 @@ class Headless(Case):
         self.go(self.routine("schedule: daily 09:30\ncommand: echo hello\n"))
         last = self.records[-1]
         self.assertEqual((last["status"], last["summary"], self.calls()), ("completed", "hello", []))
+
+    def test_a_run_that_found_something(self):
+        self.fake_claude({"type": "result", "result": "Read 12 mails.\nOUTCOME: NEEDS_ATTENTION - Acme wants a refund"})
+        self.assertEqual(self.go(self.routine()), 0)
+        last = self.records[-1]
+        self.assertEqual((last["status"], last["summary"]), ("needs_attention", "Acme wants a refund\n\nRead 12 mails."))
+
+    def test_a_script_can_say_it_found_nothing(self):
+        self.go(self.routine("schedule: daily 09:30\ncommand: echo checked; echo OUTCOME: NO_CHANGE\n"))
+        last = self.records[-1]
+        self.assertEqual((last["status"], last["summary"]), ("no_change", "checked"))
 
 
 if __name__ == "__main__":

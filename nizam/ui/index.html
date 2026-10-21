@@ -58,13 +58,12 @@ aside { background: var(--panel); border-right: 1px solid var(--line); padding: 
 aside .brand { font-weight: 700; padding: 6px 8px 10px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
 aside .brand .ar { color: var(--muted); font-weight: 500; }
 aside .brand .sp { flex: 1; }
-aside .brand .pinbtn { padding: 2px 6px; font-size: 12px; filter: grayscale(1); opacity: .55; }
-aside .brand .pinbtn.on { filter: none; opacity: 1; background: var(--accent-bg); border-color: var(--accent); }
 aside .row { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 7px; cursor: pointer; }
 aside .row:hover { background: var(--hover); }
 aside .row.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
 aside .row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 aside .row .pin { font-size: 11px; }
+aside .row .awake { font-size: 11px; }
 aside .row.agent[draggable] { cursor: grab; }
 aside .row.drop-before { box-shadow: 0 -2px 0 var(--accent); }
 aside .row.drop-after { box-shadow: 0 2px 0 var(--accent); }
@@ -121,10 +120,10 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .ago.rq.aging { color: var(--working); } .ago.rq.old { color: var(--needs); }
 .detail textarea.rqbody { max-width: 820px; min-height: 160px; line-height: 1.55; padding: 14px 16px; border-radius: 10px; }
 .dot.rt { color: var(--muted); } .dot.rt.completed { color: var(--inbox); } .dot.rt.running { color: var(--working); }
-.dot.rt.incomplete, .dot.rt.errored, .dot.rt.timed_out { color: var(--needs); }
+.dot.rt.incomplete, .dot.rt.errored, .dot.rt.timed_out, .dot.rt.needs_attention { color: var(--needs); }
 .item.rt.off { opacity: .6; }
 .tag.rt.completed { background: var(--inbox-bg); color: var(--inbox); } .tag.rt.running { background: var(--working-bg); color: var(--working); }
-.tag.rt.incomplete, .tag.rt.errored, .tag.rt.timed_out, .tag.warn { background: var(--needs-bg); color: var(--needs); }
+.tag.rt.incomplete, .tag.rt.errored, .tag.rt.timed_out, .tag.rt.needs_attention, .tag.warn { background: var(--needs-bg); color: var(--needs); }
 .tag.due.overdue { background: var(--needs-bg); color: var(--needs); } .tag.due.today { background: var(--working-bg); color: var(--working); }
 .empty { color: var(--muted); padding: 40px 12px; text-align: center; }
 .onboard { padding: 40px 24px; max-width: 460px; margin: 0 auto; }
@@ -146,6 +145,34 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .detail .prompt { margin-bottom: 12px; color: var(--muted); font-size: 12px; border-left: 3px solid var(--line); padding-left: 10px; white-space: pre-wrap; max-width: 820px; overflow-wrap: anywhere; }
 .detail .path { margin-top: 18px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .detail .back { display: none; margin-bottom: 10px; }
+
+/* ---- settings ---- */
+body.settings .list { display: none; }
+@media (min-width: 761px) { body.settings .detail { grid-column: 2 / 4; } }
+.set { max-width: 680px; margin-top: 22px; }
+.set h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 2px; font-weight: 600; }
+.set .r { display: flex; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.set .r:last-child { border-bottom: 0; }
+.set .r .l { flex: 1; min-width: 0; }
+.set .r .l b { display: block; font-weight: 600; }
+.set .r .l span { color: var(--muted); font-size: 12px; }
+.set .r .c { flex: none; display: flex; gap: 6px; align-items: center; }
+.set .r .c select { width: auto; }
+.set .r .c input[type=text], .set .r .c input[type=number] { width: 84px; }
+.set .r .c input.wide { width: 230px; }
+.set ol { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
+.set a { color: var(--accent); }
+.set code { font-family: var(--mono); font-size: 12px; }
+aside .brand .setbtn { padding: 3px 5px; color: var(--muted); display: inline-flex; }
+aside .brand .setbtn svg { width: 18px; height: 18px; }
+aside .brand .setbtn:hover { color: var(--text); }
+aside .brand .setbtn.on { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+.detail .meta button.mini { padding: 0 8px; font-size: 12px; line-height: 20px; }
+.detail .meta button.quiet.mini { color: var(--accent); padding: 0 2px; }
+input.sw { appearance: none; -webkit-appearance: none; width: 34px; height: 20px; padding: 0; border: 0; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; transition: background .15s; }
+input.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: left .15s; }
+input.sw:checked { background: var(--accent); }
+input.sw:checked::after { left: 16px; }
 
 /* ---- dialogs ---- */
 .ctx { position: fixed; z-index: 20; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25); padding: 4px; min-width: 160px; display: none; }
@@ -227,7 +254,7 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
         <select id="mWhere"><option value="same">This folder</option><option value="worktree">New git worktree</option></select><div class="note" id="mWhereNote"></div></div>
     </div>
     <div class="f"><label>Opens in</label>
-      <select id="mLauncher"><option value="Terminal">Terminal.app</option><option value="Ghostty">Ghostty</option></select></div>
+      <select id="mLauncher"><option value="Terminal">Terminal.app</option><option value="Ghostty">Ghostty</option><option value="Claude">Claude app</option></select></div>
     <div class="cmd" id="mCmd"></div>
     <div class="foot">
       <label class="chk"><input type="checkbox" id="mPaste"> Paste only (review before running)</label>
@@ -252,7 +279,8 @@ let DATA = null, SEL = load('sel', {agent: null, area: null}), CUR = new URLSear
 let showDone = load('showDone', false), folded = load('folded', []), _lastKey = null, detailOpen = !!CUR;
 if (CUR) SEL = {agent: null, area: null};
 const NATIVE = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nizam;
-function nizamSelect(id) { SEL = {agent: null, area: null}; CUR = id; detailOpen = true; refresh(true); }
+let SETTINGS = new URLSearchParams(location.search).get('settings') === '1', SET = null, _setKey = null;
+function nizamSelect(id) { SEL = {agent: null, area: null}; CUR = id; detailOpen = true; SETTINGS = false; refresh(true); }
 
 async function api(path, body) {
   const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)} : {});
@@ -262,6 +290,7 @@ function busyEditing() { return DRAG !== null || $('#ask').classList.contains('o
 async function refresh(force) {
   try {
     const d = await api('/api/board');
+    if (SETTINGS) loadSettings(force);
     // Re-rendering swaps the DOM under the cursor; only do it when something other than the clock changed.
     const key = JSON.stringify(d, (k, v) => (k === 'ago' || k === 'generated_at') ? undefined : v);
     DATA = d;
@@ -278,7 +307,8 @@ function counts(list) { const c = {needs:0, working:0, inbox:0, closed:0, later:
 function badges(c, late, reqs) { return `<span class="cnt">${reqs?`<b class="q" title="Requests and replies from other agents">▸${reqs}</b>`:''}${late?`<b class="f" title="Follow-ups overdue or due today">◆${late}</b>`:''}${c.needs?`<b class="n">${c.needs}</b>`:''}${c.working?`<b class="w">${c.working}</b>`:''}${c.inbox?`<b class="i">${c.inbox}</b>`:''}</span>`; }
 function lateCount(root) { return (DATA.followups || []).filter(f => (!root || f.agent === root) && f.due !== 'upcoming').length; }
 function requestCount(root) { return (DATA.requests || []).filter(q => !root || q.agent === root).length; }
-function failingCount(root) { return (DATA.routines || []).filter(r => (!root || r.agent === root) && r.failing).length; }
+function rtNeeds(r) { return r.failing || !!r.attention; }
+function failingCount(root) { return (DATA.routines || []).filter(r => (!root || r.agent === root) && rtNeeds(r)).length; }
 function countsFor(list, root) { const c = counts(list); c.needs += failingCount(root); return c; }
 function byAgent(root) { return DATA.sessions.filter(s => s.agent === root); }
 function agentOf(root) { return DATA.agents.find(a => a.root === root); }
@@ -303,6 +333,8 @@ function currentList() {
 const ONBOARD = `<div class="onboard"><h2>No agents yet</h2><p>Every folder you run Claude Code in shows up here as an agent, with its sessions sorted by who needs you.</p><p>Open a terminal in any project and run <code>claude</code>. The board picks it up within a few seconds.</p></div>`;
 function render() {
   if (!DATA) return;
+  document.body.classList.toggle('settings', SETTINGS);
+  if (SETTINGS) { renderSide(); renderSettings(); return; }
   if (!DATA.agents.length) { $('#side').innerHTML = `<div class="brand">Nizam <span class="ar">نظام</span></div>`; $('#list').innerHTML = ONBOARD; $('#detail').innerHTML = ''; $('#detail').classList.remove('open'); NAV = []; return; }
   if (SEL.agent && !agentOf(SEL.agent)) SEL = {agent: null, area: null};
   renderSide(); renderList(); renderDetail();
@@ -311,19 +343,20 @@ function render() {
 /* ---------- sidebar ---------- */
 function renderSide() {
   const all = visible(DATA.sessions);
-  let h = `<div class="brand">Nizam <span class="ar">نظام</span><span class="sp"></span>${NATIVE?`<button class="quiet pinbtn ${DATA.prefs.board_pinned?'on':''}" id="pinBtn" title="${DATA.prefs.board_pinned?'Unpin: back to a popover that closes on click-away':'Pin: keep the board open as a window'}">📌</button>`:''}<button class="primary" id="newBtn" title="New session (n)">＋</button></div>`;
-  h += `<div class="row ${!SEL.agent?'on':''}" data-a=""><span class="name">All agents</span>${badges(countsFor(all, null), lateCount(null), requestCount(null))}</div>`;
+  let h = `<div class="brand">Nizam <span class="ar">نظام</span><span class="sp"></span><button class="quiet setbtn ${SETTINGS?'on':''}" id="setBtn" title="Settings (⌘,)" aria-label="Settings">${GEAR}</button>${NATIVE?`<button class="quiet setbtn ${DATA.prefs.board_pinned?'on':''}" id="pinBtn" aria-label="Keep board open" title="${DATA.prefs.board_pinned?'Unpin: back to a popover that closes on click-away':'Pin: keep the board open as a window'}">${PIN}</button>`:''}<button class="primary" id="newBtn" title="New session (n)">＋</button></div>`;
+  h += `<div class="row ${!SEL.agent&&!SETTINGS?'on':''}" data-a=""><span class="name">All agents</span>${badges(countsFor(all, null), lateCount(null), requestCount(null))}</div>`;
   h += `<div class="sec">Agents</div>`;
   const agents = sortedAgents();
   for (const a of agents) {
     const list = visible(byAgent(a.root));
     if (!list.length && !showDone && !a.pinned && !lateCount(a.root) && !failingCount(a.root) && !requestCount(a.root)) continue;
-    h += `<div class="row agent ${SEL.agent===a.root?'on':''}" draggable="true" data-root="${esc(a.root)}" data-a="${esc(a.root)}" title="${esc(a.display)}\nDrag to reorder · right-click to rename or pin">${a.pinned?'<span class="pin">📌</span>':''}<span class="name">${esc(a.display_name)}</span>${badges(countsFor(list, a.root), lateCount(a.root), requestCount(a.root))}</div>`;
+    h += `<div class="row agent ${SEL.agent===a.root&&!SETTINGS?'on':''}" draggable="true" data-root="${esc(a.root)}" data-a="${esc(a.root)}" title="${esc(a.display)}\nDrag to reorder · right-click to rename or pin">${a.pinned?'<span class="pin">📌</span>':''}<span class="name">${esc(a.display_name)}</span>${a.awake?'<span class="awake" title="Awake: open it in the Claude app on your phone">📱</span>':''}${badges(countsFor(list, a.root), lateCount(a.root), requestCount(a.root))}</div>`;
   }
   h += `<div class="foot"><label class="chk"><input type="checkbox" id="showDone" ${showDone?'checked':''}> Show done</label></div>`;
   const side = $('#side'); side.innerHTML = h;
-  side.querySelectorAll('[data-a]').forEach(el => el.addEventListener('click', () => { SEL = {agent: el.dataset.a || null, area: null}; save('sel', SEL); CUR = null; render(); }));
+  side.querySelectorAll('[data-a]').forEach(el => el.addEventListener('click', () => { SEL = {agent: el.dataset.a || null, area: null}; save('sel', SEL); CUR = null; SETTINGS = false; render(); }));
   $('#newBtn').addEventListener('click', () => openModal());
+  $('#setBtn').addEventListener('click', () => SETTINGS ? closeSettings() : openSettings());
   if (NATIVE) $('#pinBtn').addEventListener('click', () => NATIVE.postMessage({pin: !DATA.prefs.board_pinned}));
   $('#showDone').addEventListener('change', e => { showDone = e.target.checked; save('showDone', showDone); render(); });
   wireAgentRows(side, agents);
@@ -366,7 +399,7 @@ async function renameAgent(root) {
 function openCtx(x, y, root) {
   const a = agentOf(root); if (!a) return;
   const c = $('#ctx');
-  c.innerHTML = `<div data-do="rename">Rename…</div><div data-do="pin">${a.pinned ? 'Unpin' : 'Pin to top'}</div><div data-do="top">Move to top</div><div data-do="new">New session here</div><div data-do="new-opts">New session with options…</div>`;
+  c.innerHTML = `<div data-do="rename">Rename…</div><div data-do="pin">${a.pinned ? 'Unpin' : 'Pin to top'}</div><div data-do="top">Move to top</div><div data-do="new">New session here</div><div data-do="new-opts">New session with options…</div>${a.awake ? '<div data-do="sleep">Put to sleep</div>' : '<div data-do="wake">Wake for the phone</div>'}`;
   c.style.left = Math.min(x, window.innerWidth - 180) + 'px'; c.style.top = y + 'px';
   c.classList.add('open');
   c.querySelectorAll('[data-do]').forEach(el => el.addEventListener('click', async () => {
@@ -374,6 +407,12 @@ function openCtx(x, y, root) {
     if (el.dataset.do === 'rename') return renameAgent(root);
     if (el.dataset.do === 'new-opts') return openModal(root, '');
     if (el.dataset.do === 'new') return quickStart(root, '');
+    if (el.dataset.do === 'wake') {
+      toast(`Waking ${a.display_name}…`, true);
+      const r = await api('/api/agents/wake', {root});
+      toast(r.error ? `Couldn't wake ${a.display_name}: ${r.error}` : `${a.display_name} is awake. Open it in the Claude app on your phone.`, !r.error);
+    }
+    if (el.dataset.do === 'sleep') await api('/api/agents/sleep', {root});
     if (el.dataset.do === 'pin') await api('/api/agents/set', {root, pinned: !a.pinned});
     if (el.dataset.do === 'top') await api('/api/agents/order', {roots: [root, ...DATA.agents.map(z => z.root).filter(z => z !== root)]});
     refresh(true);
@@ -400,8 +439,8 @@ function requestRow(q, showAgent) {
   const where = `${reply ? 'reply ' : ''}from ${esc(q.from)}` + (showAgent && a ? ` → ${esc(a.display_name)}` : '');
   return `<div class="item rq ${CUR===q.id?'on':''}" data-id="${q.id}"><span class="dot rq ${q.age}">${reply ? '◂' : '▸'}</span><span class="t">${esc(q.title)}</span><span class="ago rq ${q.age}">${q.status === 'started' ? 'started · ' : ''}${esc(q.ago)}</span><span class="where">${where}</span></div>`;
 }
-const RT_STATUS = {completed: 'Completed', incomplete: 'Incomplete', errored: 'Errored', timed_out: 'Timed out', running: 'Running', never: 'Never ran'};
-const RT_DOT = {completed: '✓', incomplete: '!', errored: '!', timed_out: '!', running: '◐', never: '○'};
+const RT_STATUS = {completed: 'Completed', no_change: 'Nothing new', needs_attention: 'Needs attention', incomplete: 'Incomplete', errored: 'Errored', timed_out: 'Timed out', running: 'Running', never: 'Never ran'};
+const RT_DOT = {completed: '✓', no_change: '–', needs_attention: '!', incomplete: '!', errored: '!', timed_out: '!', running: '◐', never: '○'};
 function routinesFor(agentRoot, areaRel) {
   let r = DATA.routines || [];
   if (agentRoot) r = r.filter(x => x.agent === agentRoot);
@@ -413,9 +452,12 @@ function routineRow(r, showAgent) {
   const where = (showAgent && a ? esc(a.display_name) : '') + (r.area ? (showAgent ? ' › ' : '') + esc(r.area) : '');
   const off = ['disabled', 'manual', 'invalid'].includes(r.state);
   const right = r.status === 'running' ? 'running' : r.next ? 'next ' + esc(r.next) : esc(r.state);
-  const line = r.error ? r.error : r.last ? `${RT_STATUS[r.status]} ${r.last.when} · ${(r.last.summary || '').split('\n')[0]}` : r.schedule;
-  const shown = r.failing ? r.status : (r.status === 'running' || r.status === 'completed' ? r.status : 'never');
-  return `<div class="item rt ${off?'off':''} ${CUR===r.id?'on':''}" data-id="${r.id}"><span class="dot rt ${shown}">${RT_DOT[shown]}</span><span class="t">${esc(r.name)}</span><span class="ago">${right}</span>${where?`<span class="where">${where}</span>`:''}<span class="p ${r.failing||r.error?'why':''}">${esc(line)}</span></div>`;
+  const found = r.attention && !r.failing ? r.attention : null;
+  const line = r.error ? r.error : found ? `Needs attention ${found.when} · ${(found.summary || '').split('\n')[0]}`
+    : r.last ? `${RT_STATUS[r.status]} ${r.last.when} · ${(r.last.summary || '').split('\n')[0]}` : r.schedule;
+  const shown = found ? 'needs_attention' : r.failing ? r.status : r.status === 'needs_attention' ? 'completed'
+    : ['running', 'completed', 'no_change'].includes(r.status) ? r.status : 'never';
+  return `<div class="item rt ${off?'off':''} ${CUR===r.id?'on':''}" data-id="${r.id}"><span class="dot rt ${shown}">${RT_DOT[shown]}</span><span class="t">${esc(r.name)}</span><span class="ago">${right}</span>${where?`<span class="where">${where}</span>`:''}<span class="p ${rtNeeds(r)||r.error?'why':''}">${esc(line)}</span></div>`;
 }
 function dotFor(s) { return s.bucket === 'working' && s.waiting && s.label !== 'Working' ? '◌' : DOT[s.bucket]; }
 function sessionRow(s) {
@@ -453,12 +495,12 @@ function renderList() {
     return section('fu', SEL.agent ? 'Follow-ups' : 'Due', fus.length + (late && SEL.agent ? ` · ${late} late` : '')) + fus.map(f => followupRow(f, !SEL.agent)).join('');
   };
   const allRt = routinesFor(SEL.agent, SEL.area);
-  const rts = SEL.agent ? allRt : allRt.filter(r => r.failing);
+  const rts = SEL.agent ? allRt : allRt.filter(rtNeeds);
   const rtHtml = () => {
     if (!rts.length) return '';
-    const bad = rts.filter(r => r.failing).length;
+    const bad = rts.filter(rtNeeds).length;
     rts.forEach(r => NAV.push(r.id));
-    return section(bad ? 'needs' : 'fu', SEL.agent ? 'Routines' : 'Routines failing', rts.length + (bad && SEL.agent ? ` · ${bad} failing` : '')) + rts.map(r => routineRow(r, !SEL.agent)).join('');
+    return section(bad ? 'needs' : 'fu', SEL.agent ? 'Routines' : 'Routines need you', rts.length + (bad && SEL.agent ? ` · ${bad} need you` : '')) + rts.map(r => routineRow(r, !SEL.agent)).join('');
   };
   const rqs = SEL.area ? [] : (DATA.requests || []).filter(q => !SEL.agent || q.agent === SEL.agent);
   const rqHtml = () => {
@@ -564,23 +606,26 @@ function renderRequest(d, q) {
 }
 function renderRoutine(d, r) {
   const a = agentOf(r.agent), L = r.last;
+  const earlier = r.attention && (!L || r.attention.run_id !== L.run_id) ? r.attention : null;
   const needsSync = r.state === 'not installed' || r.state === 'out of date';
   const mins = L && L.duration != null ? (L.duration < 90 ? `${L.duration}s` : `${Math.round(L.duration / 60)} min`) : '';
   d.innerHTML = `
     <button class="back quiet" id="back">‹ Back</button>
     <h1>${esc(r.name)}</h1>
     <div class="meta"><b>${esc(a ? a.display_name : '')}</b>${r.area?` › ${esc(r.area)}`:''} · ${r.kind === 'script' ? 'script routine' : 'routine'} · ${esc(r.schedule)} <span class="tag ${needsSync||r.state==='invalid'?'warn':''}">${esc(r.state)}</span>${r.next?` · next ${esc(r.next)}`:''}</div>
-    <div class="state ${r.failing?'needs':r.status==='running'?'working':r.status==='completed'?'inbox':'closed'}"><span class="dot rt ${r.status}">${RT_DOT[r.status]}</span>${RT_STATUS[r.status]}${L?` · ${esc(L.when)}${mins?` · ${mins}`:''}${L.trigger==='manual'?' · run by hand':''}`:''}</div>
+    <div class="state ${rtNeeds(r)?'needs':r.status==='running'?'working':['completed','no_change','needs_attention'].includes(r.status)?'inbox':'closed'}"><span class="dot rt ${r.status}">${RT_DOT[r.status]}</span>${RT_STATUS[r.status]}${L?` · ${esc(L.when)}${mins?` · ${mins}`:''}${L.trigger==='manual'?' · run by hand':''}`:''}</div>
     ${r.error ? `<div class="why">${esc(r.error)}</div>` : ''}
     ${needsSync ? `<div class="why">launchd does not have this schedule yet. Sync installs it.</div>` : ''}
     <div class="actions">
       ${needsSync ? `<button class="primary" data-rt="sync">Sync schedule</button>` : ''}
       <button class="${needsSync?'':'primary'}" data-rt="run" ${r.status==='running'||r.error?'disabled':''}>Run now</button>
+      ${earlier && earlier.session_id ? `<button data-rt="open" data-run="attention" title="Resume the run that asked for attention, with its full context">Open that run</button>` : ''}
       ${L && L.session_id ? `<button data-rt="open" title="Resume the last run as a normal session, with its full context">Open last run</button>` : ''}
       ${r.kind === 'script' && L && ['errored', 'timed_out'].includes(r.status) ? `<button id="rtFix" title="Open a session in this agent with the failure as the first prompt">Start session to fix</button>` : ''}
-      ${r.failing ? `<button data-rt="ack" title="Stop counting this failure; the next failed run counts again">Dismiss</button>` : ''}
+      ${rtNeeds(r) ? `<button data-rt="ack" title="Stop counting this; the next run that fails or finds something counts again">Dismiss</button>` : ''}
       <button class="quiet" id="rtDel" title="Open a session in this agent that deletes this routine and its schedule">Delete…</button>
     </div>
+    ${earlier ? `<div class="why">Needs attention, from the run ${esc(earlier.when)}</div><div class="msg">${esc(earlier.summary || '(no output)')}</div><div class="why">Last run</div>` : ''}
     ${L ? `<div class="msg">${esc(L.summary || '(no output)')}</div>` : `<div class="msg muted">No run recorded yet.</div>`}
     ${r.kind === 'script' ? `<div class="prompt" style="margin-top:12px">$ ${esc(r.command)}${r.about ? '\n' + esc(r.about) : ''}</div>` : ''}
     <div class="path">${esc(r.file)} · the agent edits this file${L && L.log ? `<br>${esc(L.log)}` : ''}</div>`;
@@ -604,7 +649,7 @@ function renderRoutine(d, r) {
       `Delete routine: ${r.name}`);
   });
   d.querySelectorAll('[data-rt]').forEach(el => el.addEventListener('click', async () => {
-    const act = el.dataset.rt, res = await api(`/api/routines/${act}`, {id: r.id});
+    const act = el.dataset.rt, res = await api(`/api/routines/${act}`, {id: r.id, run: el.dataset.run});
     if (res.error) { toast(res.error); return; }
     if (act === 'sync') toast((res.messages || []).join(' · ') || 'Nothing to sync', res.ok);
     if (act === 'run') toast(`${r.name} started`, true);
@@ -643,6 +688,131 @@ function renderDetail() {
     await api(`/api/sessions/${s.id}/rename`, {name}); refresh(true);
   });
   $('#back').addEventListener('click', () => { detailOpen = false; render(); });
+}
+
+/* ---------- settings ---------- */
+function openSettings() { SETTINGS = true; detailOpen = true; loadSettings(true); render(); }
+function closeSettings() { SETTINGS = false; detailOpen = false; render(); }
+function editingSettings() { const a = document.activeElement; return !!a && $('#detail').contains(a) && /input|select|textarea/i.test(a.tagName); }
+async function loadSettings(force) {
+  try {
+    const s = await api('/api/settings');
+    const key = JSON.stringify(s);
+    if (!force && key === _setKey) return;
+    SET = s; _setKey = key;
+    if (SETTINGS && !editingSettings()) renderSettings();
+  } catch (e) { console.error(e); }
+}
+const IDLE_HOURS = [1, 2, 3, 6, 12, 24, 0];
+const PIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>';
+const GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>';
+const LAUNCHER_LABEL = {Terminal: 'Terminal.app', Claude: 'Claude app'};
+const MODE_LABEL = {acceptEdits: 'Accept edits', default: 'Ask first', plan: 'Plan', auto: 'Auto'};
+function setRow(label, about, control) {
+  return `<div class="r"><div class="l"><b>${label}</b>${about ? `<span>${about}</span>` : ''}</div><div class="c">${control}</div></div>`;
+}
+function sw(attr, on, disabled) { return `<input type="checkbox" class="sw" ${attr} ${on ? 'checked' : ''} ${disabled ? 'disabled' : ''}>`; }
+function opts(pairs, cur) { return pairs.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(cur) ? 'selected' : ''}>${esc(l)}</option>`).join(''); }
+function renderSettings() {
+  const d = $('#detail');
+  d.classList.toggle('open', detailOpen);
+  if (!SET) { d.innerHTML = `<div class="muted">Loading settings…</div>`; return; }
+  const A = SET.app, T = SET.telegram;
+  const bot = T.bot ? `@${esc(T.bot)}` : '';
+  const appOnly = '<span class="muted" style="font-size:12px">In the menu bar app</span>';
+  const ver = A.latest ? `${esc(A.latest)} is available · ${NATIVE ? `<button class="primary mini" data-act="update">Update</button>` : '<code>nizam update</code>'}`
+    : `${A.current ? 'up to date' : 'not checked yet'} · <button class="quiet mini" data-act="check">Check now</button>`;
+  let h = `<button class="back quiet" id="back">‹ Back</button><h1>Settings</h1>
+    <div class="meta">Nizam ${esc(A.current || A.version)}, ${ver}${A.running ? '' : ' · the menu bar app is not running: <code>nizam app --detach</code>'}</div>`;
+
+  h += `<div class="set"><h2>This Mac</h2>`
+    + setRow('Notifications', 'A banner when something newly needs you. Click it to go there.',
+             NATIVE ? sw('data-native="notifications"', A.notifications) : appOnly)
+    + setRow('Start at login', 'Open Nizam when you log in to this Mac.', sw('data-set="login"', A.login))
+    + setRow('Floating badge', 'Live counts above other windows; hover for the lists. Handy when the menu bar is full.',
+             NATIVE ? sw('data-native="badge"', A.badge) : appOnly)
+    + setRow('Keep board open', 'A regular window instead of a popover that closes when you click away.',
+             NATIVE ? sw('data-native="pin"', A.board_pinned) : appOnly)
+    + `</div>`;
+
+  h += `<div class="set"><h2>Phone</h2>`;
+  if (!T.bot) {
+    h += setRow('Telegram', `Wake agents from your phone, and get a message when something needs you.
+      <ol><li>On Telegram, message <a href="https://t.me/BotFather" target="_blank">@BotFather</a>, send <code>/newbot</code>, and copy the token it gives you.</li><li>Paste the token here and connect.</li></ol>`,
+      `<input type="text" class="wide" id="tgToken" placeholder="123456:ABC-…" spellcheck="false" autocomplete="off"><button class="primary" data-act="connect">Connect</button>`);
+  } else {
+    h += setRow('Telegram', `${bot} · ${T.paired ? `answers ${T.paired === 1 ? 'only your account' : `${T.paired} paired accounts`}` : 'not paired yet'}`,
+                `<button data-act="disconnect">Disconnect</button>`);
+    if (!T.paired)
+      h += setRow('Pair your account', `Send any message to ${bot} on Telegram. It replies with a code; enter it here within 10 minutes.`,
+                  `<input type="text" id="tgCode" placeholder="A1B2C3" spellcheck="false" autocomplete="off"><button class="primary" data-act="pair">Pair</button>`);
+    h += setRow('Message me', 'When something newly needs you: a blocked session, a routine that failed or found something, a follow-up due at its time. Once for each thing.',
+                `<select data-set="notify">${opts([['off', 'Never'], ['away', 'When I’m away'], ['always', 'Always']], T.notify)}</select>`);
+    if (T.notify === 'away')
+      h += setRow('Away means', 'No keyboard or mouse input on this Mac for this long. Whatever is still waiting then is sent.',
+                  `<input type="number" min="1" max="240" data-set="away_minutes" value="${esc(T.away_minutes)}"> min`);
+  }
+  h += setRow('Phone sessions start in', 'The permission mode of sessions you open in the Claude app on an awake agent.',
+              `<select data-set="permission_mode">${opts(T.modes.map(m => [m, MODE_LABEL[m] || m]), T.permission_mode)}</select>`)
+    + setRow('Back to sleep after', 'An awake agent with no session activity for this long goes back to sleep.',
+             `<select data-set="idle_hours">${opts([...new Set([...IDLE_HOURS, T.idle_hours])].map(n => [n, n ? `${n} hour${n > 1 ? 's' : ''}` : 'Never']), T.idle_hours)}</select>`)
+    + `</div>`;
+
+  h += `<div class="set"><h2>Sessions and follow-ups</h2>`
+    + setRow('New sessions open in', A.launcher === 'Claude'
+               ? 'Where ＋ New, Start session and follow-ups open. The Claude app opens on the folder with the task typed in; pick the permission mode there and send it.'
+               : 'Where ＋ New, Start session and follow-ups open.',
+             `<select data-set="launcher">${opts(A.launchers.map(l => [l, LAUNCHER_LABEL[l] || l]), A.launcher)}</select>`)
+    + (A.launcher === 'Claude' ? setRow('Everything else opens in', 'Resuming a closed session, new git worktrees, and requests from other agents, which start in plan mode.',
+             `<select data-set="terminal">${opts(A.launchers.filter(l => l !== 'Claude').map(l => [l, LAUNCHER_LABEL[l] || l]), A.terminal)}</select>`) : '')
+    + setRow('Untimed follow-ups come up at', 'A follow-up with a time of its own comes up then instead.',
+             `<input type="text" data-set="followup_hour" value="${esc(SET.followups.hour)}" spellcheck="false">`)
+    + `</div>`;
+  d.innerHTML = h;
+
+  $('#back').addEventListener('click', closeSettings);
+  d.querySelectorAll('[data-set]').forEach(el => el.addEventListener('change', () =>
+    saveSetting(el.dataset.set, el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value)));
+  d.querySelectorAll('[data-native]').forEach(el => el.addEventListener('change', () => {
+    NATIVE.postMessage({[el.dataset.native]: el.checked});
+    setTimeout(() => loadSettings(true), 400);
+  }));
+  d.querySelectorAll('[data-act]').forEach(el => el.addEventListener('click', () => settingsAction(el)));
+  const enter = (sel, act) => { const i = $(sel, d); if (i) i.addEventListener('keydown', e => { if (e.key === 'Enter') settingsAction($(`[data-act="${act}"]`, d)); }); };
+  enter('#tgToken', 'connect'); enter('#tgCode', 'pair');
+}
+async function saveSetting(key, value) {
+  const r = await api('/api/settings', {[key]: value});
+  if (r.error) toast(r.error);
+  if (r.settings) { SET = r.settings; _setKey = JSON.stringify(SET); }
+  if (document.activeElement) document.activeElement.blur();
+  r.error ? loadSettings(true) : renderSettings();
+}
+async function settingsAction(el) {
+  const act = el.dataset.act, post = (path, body) => api(`/api/settings/${path}`, body || {});
+  let r;
+  if (act === 'connect') {
+    const token = $('#tgToken').value.trim();
+    if (!token) { toast('Paste the token @BotFather gave you'); return; }
+    el.disabled = true; el.textContent = 'Connecting…';
+    r = await post('telegram-connect', {token});
+    if (!r.error) toast(`Connected @${r.settings.telegram.bot}. Now send it any message on Telegram.`, true);
+  } else if (act === 'pair') {
+    r = await post('telegram-pair', {code: $('#tgCode').value.trim()});
+    if (!r.error) toast('Paired. The bot answers only you.', true);
+  } else if (act === 'disconnect') {
+    if (!await confirmBox('Disconnect the Telegram bot?', 'It stops answering and stops messaging you. Agents already awake stay awake.', 'Disconnect')) return;
+    r = await post('telegram-disconnect');
+  } else if (act === 'check') {
+    el.disabled = true; el.textContent = 'Checking…';
+    r = await post('check-update');
+    if (!r.error) toast(r.settings.app.latest ? `${r.settings.app.latest} is available` : 'Nizam is up to date', true);
+  } else if (act === 'update') {
+    NATIVE.postMessage({update: true}); toast('Updating… Nizam restarts when it is done.', true); return;
+  }
+  if (r && r.error) toast(r.error);
+  if (r && r.settings) { SET = r.settings; _setKey = JSON.stringify(SET); }
+  renderSettings();
 }
 
 /* ---------- dialogs ---------- */
@@ -748,11 +918,14 @@ function updateCmd() {
   const p = startPayload();
   let c = `cd ${p.cwd.replace(/^\/Users\/[^/]+/, '~')} && claude --session-id <new>` + (p.permission_mode !== 'default' ? ` --permission-mode ${p.permission_mode}` : '') + (p.prompt.trim() ? ` '${p.prompt.trim().slice(0,60)}${p.prompt.trim().length>60?'…':''}'` : '');
   if (p.worktree) c = '(git worktree add …) && ' + c;
+  const app = $('#mLauncher').value === 'Claude' && !p.worktree;
+  if (app) c = `The Claude app opens a new session in ${p.cwd.replace(/^\/Users\/[^/]+/, '~')}` + (p.prompt.trim() ? ', with the task typed in for you to send.' : '.');
+  $('#mPerm').disabled = $('#mPaste').disabled = app;
   $('#mCmd').textContent = c;
 }
 $('#mAgent').addEventListener('change', () => { fillAreas(''); syncWhere(); updateCmd(); });
 ['#mArea','#mPrompt','#mPerm','#mWhere'].forEach(s => $(s).addEventListener('input', updateCmd));
-$('#mLauncher').addEventListener('change', async () => { await api('/api/prefs', {launcher: $('#mLauncher').value}); });
+$('#mLauncher').addEventListener('change', async () => { updateCmd(); await api('/api/prefs', {launcher: $('#mLauncher').value}); });
 $('#mCancel').addEventListener('click', () => $('#modal').classList.remove('open'));
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') $('#modal').classList.remove('open'); });
 $('#mGo').addEventListener('click', async () => {
@@ -767,7 +940,9 @@ $('#mGo').addEventListener('click', async () => {
 
 /* ---------- keys ---------- */
 document.addEventListener('keydown', e => {
+  if (e.key === ',' && e.metaKey) { e.preventDefault(); SETTINGS ? closeSettings() : openSettings(); return; }
   if (/input|textarea|select/i.test(e.target.tagName)) return;
+  if (SETTINGS) { if (e.key === 'Escape' && !busyEditing()) closeSettings(); return; }
   if (e.key === 'Escape') { $('#modal').classList.remove('open'); $('#ctx').classList.remove('open'); if (detailOpen) { detailOpen = false; render(); } }
   if (e.key === 'n' && !e.metaKey && !e.ctrlKey) openModal();
   if (e.key === 'j' || e.key === 'k' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {

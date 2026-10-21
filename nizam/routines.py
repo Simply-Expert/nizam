@@ -34,10 +34,11 @@ SRC_ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_TIMEOUT = 30 * 60
 FAILED = ("incomplete", "errored", "timed_out")
+ATTENTION = "needs_attention"
 _DAYS = {"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6}
 _FRONT = re.compile(r"\A---[ \t]*\n(.*?)\n---[ \t]*\n?(.*)\Z", re.S)
 _TIME = re.compile(r"(?<![\d:])(\d{1,2}):(\d{2})(?!\d)")
-_OUTCOME = re.compile(r"OUTCOME:\s*\**\s*(COMPLETE|INCOMPLETE)\b[ \t]*[-—–:]*[ \t]*([^\n*]*)", re.I)
+_OUTCOME = re.compile(r"OUTCOME:\s*\**\s*(COMPLETE|INCOMPLETE|NO[_ ]CHANGE|NEEDS[_ ]ATTENTION)\b[ \t]*[-—–:]*[ \t]*([^\n*]*)", re.I)
 
 
 class ScheduleError(ValueError):
@@ -413,12 +414,13 @@ _runs_cache: tuple[tuple[float, int], dict] | None = None
 
 
 def runs_index() -> dict:
-    """{'last': routine id -> latest real run, 'sessions': session id -> run}."""
+    """{'last': routine id -> latest real run, 'attention': routine id -> latest run that
+    asked for attention, 'sessions': session id -> run}."""
     global _runs_cache
     try:
         st = RUNS_FILE.stat()
     except OSError:
-        return {"last": {}, "sessions": {}}
+        return {"last": {}, "attention": {}, "sessions": {}}
     key = (st.st_mtime, st.st_size)
     if _runs_cache and _runs_cache[0] == key:
         return _runs_cache[1]
@@ -432,13 +434,16 @@ def runs_index() -> dict:
             if ev.get("run_id"):
                 runs.setdefault(ev["run_id"], {}).update(ev)
     last: dict[str, dict] = {}
+    attention: dict[str, dict] = {}
     sessions: dict[str, dict] = {}
     for run in runs.values():
         for sid in run.get("sessions") or []:
             sessions[sid] = run
         if run.get("status") != "skipped":
             last[run.get("routine", "")] = run      # file order is time order
-    idx = {"last": last, "sessions": sessions}
+        if run.get("status") == ATTENTION:
+            attention[run.get("routine", "")] = run
+    idx = {"last": last, "attention": attention, "sessions": sessions}
     _runs_cache = (key, idx)
     return idx
 
@@ -447,6 +452,13 @@ def _live_status(run: dict) -> dict:
     if run.get("status") == "running" and not is_running(run):
         return {**run, "status": "errored", "summary": "The runner died before it could record a result."}
     return run
+
+
+def _brief(run: dict) -> dict:
+    return {"run_id": run.get("run_id"), "status": run.get("status"), "when": when_label(run.get("started")),
+            "duration": run.get("duration"), "summary": run.get("summary", ""),
+            "session_id": (run.get("sessions") or [None])[-1], "log": run.get("log"),
+            "trigger": run.get("trigger"), "cost": run.get("cost")}
 
 
 def board_rows(agent, acks: dict) -> list[dict]:
@@ -458,19 +470,19 @@ def board_rows(agent, acks: dict) -> list[dict]:
         last = _live_status(last) if last else None
         status = last["status"] if last else "never"
         nxt = next_run(r.intervals) if r.scheduled else None
+        # Dismissing a run dismisses every run before it; run ids sort by start time.
+        seen = acks.get(r.id) or ""
+        noted = idx["attention"].get(r.id)
         rows.append({
             "id": "r:" + r.id, "agent": str(r.agent_root), "area": r.area, "name": r.name,
             "kind": "script" if r.command else "agent", "command": r.command, "about": r.prompt[:600] if r.command else "",
             "file": str(r.path), "cwd": str(r.cwd), "schedule": r.meta.get("schedule", "manual"),
             "state": install_state(r, inst), "error": r.error, "timeout": r.timeout,
             "next": when_label(nxt), "status": status,
-            "failing": bool(last) and status in FAILED and acks.get(r.id) != last["run_id"],
-            "last": last and {
-                "run_id": last.get("run_id"), "status": status, "when": when_label(last.get("started")),
-                "duration": last.get("duration"), "summary": last.get("summary", ""),
-                "session_id": (last.get("sessions") or [None])[-1], "log": last.get("log"),
-                "trigger": last.get("trigger"), "cost": last.get("cost"),
-            },
+            "failing": bool(last) and status in FAILED and last["run_id"] > seen,
+            # A later quiet run does not clear what an earlier one found; only Dismiss does.
+            "attention": _brief(noted) if noted and noted["run_id"] > seen else None,
+            "last": last and {**_brief(last), "status": status},
         })
     return rows
 
@@ -486,13 +498,13 @@ def is_running(run: dict) -> bool:
 
 
 def parse_outcome(text: str) -> tuple[str | None, str, str]:
-    """(complete|incomplete|None, reason, text without the marker line)."""
+    """(complete|no_change|needs_attention|incomplete|None, reason, text without the marker line)."""
     hits = list(_OUTCOME.finditer(text or ""))
     if not hits:
         return None, "", (text or "").strip()
     m = hits[-1]
     body = "\n".join(l for l in text.splitlines() if not _OUTCOME.search(l)).strip()
-    return m.group(1).lower(), m.group(2).strip(), body
+    return m.group(1).lower().replace(" ", "_"), m.group(2).strip(), body
 
 
 def decide_status(timed_out: bool, exit_code: int | None, is_error: bool, outcome: str | None) -> str:
@@ -500,7 +512,7 @@ def decide_status(timed_out: bool, exit_code: int | None, is_error: bool, outcom
         return "timed_out"
     if exit_code != 0 or is_error:
         return "errored"
-    return "completed" if outcome == "complete" else "incomplete"
+    return {"complete": "completed", "no_change": "no_change", "needs_attention": ATTENTION}.get(outcome or "", "incomplete")
 
 
 def outcome_summary(outcome: str | None, reason: str, body: str) -> str:
@@ -518,5 +530,5 @@ def settle_resumed(run: dict, text: str, prompt_ts: float | None) -> None:
         return
     outcome, reason, body = parse_outcome(text)
     if outcome:
-        record({"run_id": run["run_id"], "status": "completed" if outcome == "complete" else "incomplete",
+        record({"run_id": run["run_id"], "status": decide_status(False, 0, False, outcome),
                 "summary": outcome_summary(outcome, reason, body)[-1500:], "resumed": prompt_ts})

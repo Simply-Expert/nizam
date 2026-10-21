@@ -11,8 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import terminal
-from . import reminders
+from . import reminders, settings, terminal
 from .agents import display_path, load_agent
 from .paths import PORT_FILE, ensure_dirs
 from .state import LOOKBACK, Board
@@ -82,6 +81,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._file(UI_DIR / "index.html")
         if u.path == "/api/board":
             return self._json(self.board.snapshot())
+        if u.path == "/api/settings":
+            return self._json(settings.read(self.board))
         if u.path.startswith("/api/agents/areas"):
             from urllib.parse import parse_qs
             root = parse_qs(u.query).get("root", [""])[0]
@@ -104,6 +105,7 @@ class Handler(BaseHTTPRequestHandler):
         body = self._body()
         b = self.board
         launcher = b.persist.data["prefs"].get("launcher", "Terminal")
+        term = terminal.terminal_for(b.persist.data["prefs"])
 
         if parts[:2] == ["api", "sessions"] and len(parts) == 4:
             sid, action = parts[2], parts[3]
@@ -133,7 +135,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True, "at": at, "label": at and reminders.label(at, now),
                                    "spoken": at and reminders.spoken(at, now)})
             elif action == "open":
-                ok = terminal.open_session(s, launcher, bool(body.get("paste")))
+                ok = terminal.open_session(s, term, bool(body.get("paste")))
                 if ok and s["remind_due"]:
                     b.persist.remind(sid, None)
                 b.invalidate()
@@ -152,7 +154,7 @@ class Handler(BaseHTTPRequestHandler):
             sid = terminal.start(cwd, prompt=str(body.get("prompt") or ""),
                                  permission_mode=str(body.get("permission_mode") or "acceptEdits"),
                                  worktree=bool(body.get("worktree")), paste_only=bool(body.get("paste")),
-                                 launcher=launcher)
+                                 launcher=term if body.get("worktree") else launcher)
             b.persist.set_pref("last_start", {"cwd": cwd, "permission_mode": body.get("permission_mode"),
                                               "at": time.time()})
             if sid and body.get("title"):
@@ -188,6 +190,24 @@ class Handler(BaseHTTPRequestHandler):
             b.invalidate()
             return self._json({"ok": True})
 
+        if parts[:2] == ["api", "agents"] and parts[2:] in (["wake"], ["sleep"]):
+            from . import remote, telegram
+            a = next((x for x in b.snapshot()["agents"] if x["root"] == body.get("root")), None)
+            if not a:
+                return self._json({"error": "unknown agent"}, 404)
+            if parts[2] == "sleep":
+                stopped = remote.stop(Path(a["root"]))
+                b.invalidate()
+                return self._json({"ok": True, "stopped": stopped})
+            mode = telegram.load_config().get("permission_mode", telegram.DEFAULT_PERMISSION_MODE)
+            try:
+                rec = remote.wake(Path(a["root"]), a["display_name"], mode)
+            except remote.WakeError as e:
+                return self._json({"error": str(e)}, 400)
+            b.invalidate()
+            return self._json({"ok": True, "already": bool(rec.get("already")),
+                               "session_url": rec.get("session_url"), "page_url": rec.get("page_url")})
+
         if parts == ["api", "agents", "order"]:
             b.persist.set_agent_order(list(body.get("roots") or []))
             b.invalidate()
@@ -212,8 +232,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": not any(m.startswith("!") for m in msgs), "messages": msgs})
             elif parts[2] == "ack" and r["last"]:
                 b.persist.ack_routine(r["id"][2:], r["last"]["run_id"])
-            elif parts[2] == "open" and r["last"] and r["last"]["session_id"]:
-                ok = terminal.resume(r["last"]["session_id"], r["cwd"], bool(body.get("paste")), launcher)
+            elif parts[2] == "open" and (run := r["attention"] if body.get("run") == "attention" else r["last"]) \
+                    and run["session_id"]:
+                ok = terminal.resume(run["session_id"], r["cwd"], bool(body.get("paste")), term)
                 return self._json({"ok": ok})
             else:
                 return self._json({"error": "unknown action"}, 400)
@@ -233,7 +254,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not text:
                     return self._json({"error": "The note is empty; dismiss it instead"}, 400)
                 sid = terminal.start(r["from_root"], prompt=requests.reply_prompt(r, text), permission_mode="plan",
-                                     paste_only=bool(body.get("paste")), launcher=launcher)
+                                     paste_only=bool(body.get("paste")), launcher=term)
                 requests.set_reply(r["id"], "started", session_id=sid, **({"edited": text} if text != r["note"] else {}))
                 if sid:
                     b.persist.rename(sid, f"Reply from {r['to']}: {q['title']}"[:90])
@@ -251,7 +272,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": "The request is empty; dismiss it instead"}, 400)
                 # Plan mode: another agent wrote this text, so nothing is edited before the user has read the reply.
                 sid = terminal.start(r["to_root"], prompt=requests.launch_prompt(r, text), permission_mode="plan",
-                                     paste_only=bool(body.get("paste")), launcher=launcher)
+                                     paste_only=bool(body.get("paste")), launcher=term)
                 requests.set_status(r["id"], "started", by="user", session_id=sid,
                                     **({"edited": text} if text != r["body"] else {}))
                 if sid:
@@ -264,9 +285,39 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
             return self._json({"error": "unknown action"}, 400)
 
+        if parts[:2] == ["api", "settings"]:
+            from . import telegram, update
+            action = parts[2] if len(parts) == 3 else None
+            try:
+                if action is None:
+                    settings.apply(b, body)
+                elif action == "telegram-connect":
+                    telegram.setup(str(body.get("token") or ""))
+                elif action == "telegram-pair":
+                    telegram.pair(str(body.get("code") or ""))
+                elif action == "telegram-disconnect":
+                    telegram.CONFIG_FILE.unlink(missing_ok=True)
+                elif action == "check-update":
+                    update.check()
+                else:
+                    return self._json({"error": "unknown action"}, 400)
+            except telegram.TelegramError as e:
+                return self._json({"error": f"Telegram said: {e}"}, 400)
+            except update.UpdateError as e:
+                return self._json({"error": str(e)}, 400)
+            except ValueError as e:
+                msg = str(e)
+                return self._json({"error": msg[:1].upper() + msg[1:]}, 400)
+            return self._json({"ok": True, "settings": settings.read(b)})
+
         if parts == ["api", "prefs"]:
             for k, v in body.items():
-                if k in ("launcher", "show_done", "density", "selected", "theme"):
+                if k == "launcher":
+                    try:
+                        settings.apply(b, {k: v})
+                    except ValueError as e:
+                        return self._json({"error": str(e)}, 400)
+                elif k in ("show_done", "density", "selected", "theme"):
                     b.persist.set_pref(k, v)
                 elif k == "followup_hour":
                     try:
