@@ -2,6 +2,16 @@
 
 The newest release is at the top.
 
+## 0.3.1 · 22 Oct 2026
+
+- **Start a follow-up from your phone.** `/followups` numbers the ones due now, with a button
+  each. Tap one and its agent wakes on that follow-up, the way *Start session* does on the
+  board. Open the session in the Claude app and it is already working on it.
+- **Claude in Chrome on the phone.** Sessions you open on an awake agent can use Chrome when
+  `/chrome` is on for your Mac. Before, they started without it.
+- **A much quicker bot.** On networks without working IPv6, every message to and from the bot
+  could wait up to 15 seconds. Replies now come back in well under a second.
+
 ## 0.3.0 · 22 Oct 2026
 
 - **Wake an agent from your phone.** Connect a Telegram bot of your own, send `/wake marketing`,
