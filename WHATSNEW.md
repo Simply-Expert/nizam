@@ -2,6 +2,21 @@
 
 The newest release is at the top.
 
+## 0.3.0 · 22 Oct 2026
+
+- **Wake an agent from your phone.** Connect a Telegram bot of your own, send `/wake marketing`,
+  and talk to that agent in the Claude app on your phone. `/sleep`, `/agents`, `/status` and
+  `/followups` work too, and so does plain text like "wake the one that does invoices".
+- **Your phone tells you when something needs you.** Send the bot `/notify on`: it messages you
+  once you have been away from the Mac for 5 minutes, once for each thing.
+- **Routines say what they found.** A run that checked and found nothing stays quiet. A run that
+  found something you should see goes under Needs you, and stays there until you dismiss it.
+- **A Settings page.** Click the gear next to the Nizam name, or press ⌘,, to see and change
+  every setting in one place, including setting up the Telegram bot.
+- **New sessions in the Claude app.** Choose *Claude app* under *New sessions open in*: new
+  sessions open there with the folder and the task filled in, ready for you to send.
+- **Pin and gear match.** Both buttons at the top of the board are now plain grey icons.
+
 ## 0.2.5 · 20 Oct 2026
 
 - **Notifications are opt-in.** They are off until you turn them on: right-click the badge
