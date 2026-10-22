@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from . import followups as followups_mod, providers, remote
+from .launch import PID_FILE, app_running
 from .paths import NIZAM_DIR
 from .requests import ago, load_links
 from .runner import login_path
@@ -37,6 +38,7 @@ API_HOST = "api.telegram.org"
 CONNECT_SECS = 4
 POLL_SECS = 50
 STALE_AFTER = 10 * 60          # a command sent while the Mac slept is not acted on hours later
+STALLED_AFTER = 5 * 60         # healthy polling comes back at least every POLL_SECS
 PAIR_TTL = 10 * 60
 MAX_PENDING = 5
 FOLLOWUPS_AHEAD = 7
@@ -102,6 +104,8 @@ def _dial(address: tuple, timeout: float | None, source_address=None) -> socket.
 
 _idle: list[http.client.HTTPSConnection] = []
 _idle_lock = threading.Lock()
+_polls: set[http.client.HTTPSConnection] = set()   # a getUpdates is waiting on these
+_woke = threading.Event()
 _tls = ssl.create_default_context()
 
 
@@ -117,6 +121,10 @@ def _post(path: str, data: bytes, wait: float) -> tuple[int, bytes]:
         conn.timeout = wait
         if conn.sock:
             conn.sock.settimeout(wait)
+        polling = path.endswith("/getUpdates")
+        if polling:
+            with _idle_lock:
+                _polls.add(conn)
         try:
             conn.request("POST", path, body=data, headers={"Content-Type": "application/json"})
             r = conn.getresponse()
@@ -129,10 +137,30 @@ def _post(path: str, data: bytes, wait: float) -> tuple[int, bytes]:
                                                          BrokenPipeError)):
                 continue
             raise
+        finally:
+            with _idle_lock:
+                _polls.discard(conn)
         with _idle_lock:
             _idle.append(conn)
         return status, body
     raise OSError("unreachable")
+
+
+def woke() -> None:
+    """The Mac just woke: drop connections that may have died in its sleep and poll again now."""
+    with _idle_lock:
+        stale, polls = list(_idle), list(_polls)
+        _idle.clear()
+    for conn in stale:
+        conn.close()
+    for conn in polls:
+        sock = conn.sock
+        if sock:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)   # the waiting read returns at once; close() would not wake it
+            except OSError:
+                pass
+    _woke.set()
 
 
 def call(token: str, method: str, wait: float = 15, **params) -> Any:
@@ -215,6 +243,18 @@ def configure(**fields) -> None:
     cfg = load_config()
     cfg.update(fields)
     save_config(cfg)
+
+
+def stalled_for(now: float | None = None) -> float | None:
+    """How long the running app has gone without a poll coming back, once that is too long; else None."""
+    if not load_config().get("token") or not app_running():
+        return None
+    now = now or time.time()
+    try:
+        since = max(float(_load(STATE_FILE).get("polled") or 0), PID_FILE.stat().st_mtime)   # a fresh app has yet to poll
+    except OSError:
+        return None
+    return now - since if now - since > STALLED_AFTER else None
 
 
 def idle_secs() -> float | None:
@@ -323,6 +363,14 @@ class Bot:
 
     # ---- the loop
 
+    @staticmethod
+    def pause(secs: float) -> bool:
+        """Wait, unless the Mac wakes first; True if it did."""
+        if _woke.wait(secs):
+            _woke.clear()
+            return True
+        return False
+
     def run(self) -> None:
         backoff, menu_for = 5.0, None
         while True:
@@ -330,7 +378,7 @@ class Bot:
                 self.housekeep()
                 cfg = self.config()
                 if not cfg.get("token"):
-                    time.sleep(30)
+                    self.pause(30)
                     continue
                 if menu_for != cfg["token"]:
                     _set_commands(cfg["token"], self.api)   # an update may have added commands since setup
@@ -338,20 +386,22 @@ class Bot:
                 updates = self.api(cfg["token"], "getUpdates", wait=POLL_SECS + 15, offset=self.state.get("offset", 0),
                                    timeout=POLL_SECS, allowed_updates=["message", "callback_query"])
                 backoff = 5.0
+                with self.lock:
+                    self.state["polled"] = time.time()
+                    _save(STATE_FILE, self.state)
             except TelegramError as e:
                 if e.code == 401:
                     _log("Telegram rejected the bot token; run: nizam telegram setup <token>")
-                    time.sleep(300)
+                    self.pause(300)
                 elif e.code == 409:
                     _log("another program is reading this bot's messages; give it a bot of its own")
-                    time.sleep(60)
+                    self.pause(60)
                 else:
-                    time.sleep(backoff)
-                    backoff = min(backoff * 2, 300)
+                    backoff = 5.0 if self.pause(backoff) else min(backoff * 2, 300)
                 continue
             except Exception:
                 traceback.print_exc()
-                time.sleep(30)
+                self.pause(30)
                 continue
             for u in updates or []:
                 with self.lock:
@@ -505,12 +555,18 @@ class Bot:
             key = key_of(fu["agent"]) if fu else ""
         agent = next((a for a in self.agents() if key_of(a["root"]) == key), None) if mine else None
         toast = {"w": "Waking {}…", "s": "Putting {} to sleep…", "f": "Starting {}…"}.get(verb, "") if agent else ""
+        late = False
         try:
             self.api(self.cfg["token"], "answerCallbackQuery", callback_query_id=q["id"],
                      text=toast.format(agent["display_name"]) if toast else "")
-        except TelegramError:
-            pass
+        except TelegramError as e:
+            # A tap carries no time of its own; Telegram refusing to answer it is how one shows it is old.
+            late = "too old" in str(e)
         if not mine or not chat:
+            return
+        if late:
+            self.send(chat, "That tap reached me late, while this Mac was asleep or offline, so I did nothing. "
+                            "Tap it again if you still want it.")
             return
         if verb == "f" and not fu:
             self.send(chat, "That follow-up is no longer in its FOLLOWUPS.md. /followups lists the ones that are.")

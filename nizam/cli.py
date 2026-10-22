@@ -44,7 +44,7 @@ def ensure_venv() -> bool:
 
 
 def run_app(port: int, detach: bool = False) -> int:
-    from .launch import app_bundle
+    from .launch import app_bundle, start_with_launchd
     from .terminal import clean_env
     if not ensure_venv():
         return 1
@@ -54,6 +54,9 @@ def run_app(port: int, detach: bool = False) -> int:
     if exe:
         # How a venv's own launcher points the interpreter at the venv; Python unsets it on start.
         env["__PYVENV_LAUNCHER__"] = str(VENV_PY)
+    if detach and port == 7331 and start_with_launchd():
+        print("Nizam started in the background; log:", NIZAM_DIR / "app.log")
+        return 0
     if detach:
         # Its own session, so closing the launching terminal does not take the app down with it.
         log = open(NIZAM_DIR / "app.log", "ab")
@@ -189,6 +192,10 @@ def phone_lines() -> list[str]:
         lines = [f"telegram: @{cfg.get('bot')}, {len(users)} paired account{'s' if len(users) > 1 else ''}; {notify}"]
     else:
         lines = [f"telegram: @{cfg.get('bot')}, not paired yet: message the bot, then run nizam telegram pair <code>"]
+    stalled = telegram.stalled_for()
+    if stalled is not None:
+        lines.append(f"  ! the app has not heard from Telegram for {ago(stalled)}, so the bot may not be answering; "
+                     "nizam app --restart")
     for root, rec in remote.awake().items():
         lines.append(f"  awake for the phone: {rec['name']} ({root}), {ago(time.time() - rec['started'])}")
     return lines

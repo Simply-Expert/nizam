@@ -609,6 +609,8 @@ class AppDelegate(NSObject):
             UNUserNotificationCenter.currentNotificationCenter().setDelegate_(self)
         NSWorkspace.sharedWorkspace().notificationCenter().addObserver_selector_name_object_(
             self, "spaceChanged:", "NSWorkspaceActiveSpaceDidChangeNotification", None)
+        NSWorkspace.sharedWorkspace().notificationCenter().addObserver_selector_name_object_(
+            self, "didWake:", "NSWorkspaceDidWakeNotification", None)
         self.refresh_(None)
         self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
             REFRESH_SECS, self, "refresh:", None, True)
@@ -728,6 +730,9 @@ class AppDelegate(NSObject):
         if self.badge.isVisible():
             self.badge.orderFrontRegardless()
             _track_hover(self.badge_view)
+
+    def didWake_(self, _note):
+        telegram.woke()
 
     def badgeMoved_(self, _):
         o = self.badge.frame().origin
@@ -1070,7 +1075,7 @@ def run(port: int) -> int:
     ensure_dirs()
     if app_running():
         sys.stderr.write("Nizam is already running in the menu bar.\n")
-        return 1
+        return 0   # not a failure, or launchd would keep starting another
     PID_FILE.write_text(str(os.getpid()))
     board = Board()
     httpd = make_server(board, port)

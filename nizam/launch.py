@@ -65,7 +65,7 @@ def login_enabled() -> bool:
 
 def set_login(on: bool) -> None:
     if not on:
-        subprocess.run(["launchctl", "unload", LAUNCH_AGENT], capture_output=True)
+        # Not unloaded: when the running app is the login item's own job, that would quit it.
         try:
             os.remove(LAUNCH_AGENT)
         except FileNotFoundError:
@@ -73,17 +73,35 @@ def set_login(on: bool) -> None:
         return
     root = Path(__file__).resolve().parents[1]
     plist = {
-        "Label": "co.nizam.app",
+        "Label": BUNDLE_ID,
         "ProgramArguments": [str(NIZAM_DIR / "venv" / "bin" / "python"), "-m", "nizam", "app"],
         "WorkingDirectory": str(root),
         "RunAtLoad": True,
-        "KeepAlive": False,
+        # Brought back after a crash, not after Quit (which exits 0).
+        "KeepAlive": {"SuccessfulExit": False},
         "StandardOutPath": str(NIZAM_DIR / "app.log"),
         "StandardErrorPath": str(NIZAM_DIR / "app.log"),
     }
     os.makedirs(os.path.dirname(LAUNCH_AGENT), exist_ok=True)
     with open(LAUNCH_AGENT, "wb") as f:
         plistlib.dump(plist, f)
+
+
+def start_with_launchd() -> bool:
+    """Start the app as the login item's job, so launchd restarts it if it crashes.
+    False when there is no login item or launchd would not take it; the caller starts it itself."""
+    import time
+    if not login_enabled() or app_running():   # a bootout would quit an app that is the job
+        return False
+    set_login(True)   # a login item written by an older Nizam lacks KeepAlive
+    domain = f"gui/{os.getuid()}"
+    subprocess.run(["launchctl", "bootout", f"{domain}/{BUNDLE_ID}"], capture_output=True)
+    for _ in range(5):
+        # Right after a bootout, bootstrap can briefly fail with an I/O error.
+        if subprocess.run(["launchctl", "bootstrap", domain, LAUNCH_AGENT], capture_output=True).returncode == 0:
+            return True
+        time.sleep(0.5)
+    return False
 
 
 def pid_alive(pid: int) -> bool:

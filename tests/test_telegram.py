@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import time
@@ -27,10 +28,12 @@ class FakeBoard:
 
 class FakeTelegram:
     def __init__(self):
-        self.calls = []
+        self.calls, self.refuse = [], {}
 
     def __call__(self, token, method, wait=15, **params):
         self.calls.append((method, params))
+        if method in self.refuse:
+            raise self.refuse[method]
         return {"message_id": len(self.calls)} if method == "sendMessage" else True
 
     def said(self, method=None):
@@ -150,6 +153,18 @@ class Bot(unittest.TestCase):
         self.message("/wake marketing", sent=time.time() - 3 * 3600)
         self.assertEqual(self.woken, [])
         self.assertIn("3h late", self.tg.texts()[-1])
+
+    def test_a_tap_that_arrives_late_is_not_acted_on(self):
+        self.tg.refuse["answerCallbackQuery"] = T.TelegramError(
+            "Bad Request: query is too old and response timeout expired or query ID is invalid", 400)
+        self.press("w:" + T.key_of("/w/marketing"))
+        self.assertEqual(self.woken, [])
+        self.assertIn("reached me late", self.tg.texts()[-1])
+
+    def test_a_tap_whose_answer_fails_otherwise_still_counts(self):
+        self.tg.refuse["answerCallbackQuery"] = T.TelegramError("timed out")
+        self.press("w:" + T.key_of("/w/marketing"))
+        self.assertEqual([w[0] for w in self.woken], ["/w/marketing"])
 
     def test_plain_text_goes_through_the_router(self):
         router = Router({"action": "wake", "agent": T.key_of("/w/finance")})
@@ -328,6 +343,31 @@ class Bot(unittest.TestCase):
         self.bot.config()
         self.assertEqual(self.bot.state, {"bot": "other_bot"})
 
+    def test_a_silent_poller_is_reported_until_a_poll_comes_back(self):
+        class Stop(BaseException):
+            pass
+
+        polls = []
+
+        def api(token, method, wait=15, **params):
+            if method != "getUpdates":
+                return True
+            polls.append(method)
+            if len(polls) > 1:
+                raise Stop
+            return []
+
+        pid = self.tmp / "app.pid"
+        pid.write_text("1")
+        os.utime(pid, (time.time() - 3600,) * 2)
+        with mock.patch.object(T, "PID_FILE", pid), mock.patch.object(T, "app_running", lambda: True):
+            self.assertGreater(T.stalled_for(), 3500)
+            self.bot.api = api
+            with self.assertRaises(Stop):
+                self.bot.run()
+            self.assertIsNone(T.stalled_for())
+            self.assertIsNotNone(T.stalled_for(now=time.time() + T.STALLED_AFTER + 60))
+
     def test_config_is_private(self):
         self.assertEqual(T.CONFIG_FILE.stat().st_mode & 0o777, 0o600)
 
@@ -367,6 +407,20 @@ class Dial(unittest.TestCase):
             sock = T._dial(("api.telegram.org", 443), 65)
         self.assertEqual(tried, ["1.2.3.4", "5.6.7.8"])
         self.assertEqual(sock.timeouts, [T.CONNECT_SECS, 65])
+
+
+class Wake(unittest.TestCase):
+    def test_waking_drops_connections_and_cuts_the_wait_short(self):
+        idle, polling = mock.Mock(), mock.Mock()
+        with mock.patch.object(T, "_idle", [idle]), mock.patch.object(T, "_polls", {polling}):
+            T.woke()
+            self.assertEqual(T._idle, [])
+        idle.close.assert_called_once()
+        polling.sock.shutdown.assert_called_once_with(T.socket.SHUT_RDWR)
+        start = time.time()
+        self.assertTrue(T.Bot.pause(30))
+        self.assertLess(time.time() - start, 1)
+        self.assertFalse(T.Bot.pause(0))
 
 
 class Structured(unittest.TestCase):
