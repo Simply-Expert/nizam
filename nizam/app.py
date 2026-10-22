@@ -241,6 +241,8 @@ class BoardVC(NSViewController, protocols=[objc.protocolNamed("WKScriptMessageHa
                 self.delegate.performSelector_withObject_afterDelay_(sel, bool(body[key]), 0.0)
         if "update" in body:
             self.delegate.performSelector_withObject_afterDelay_("startUpdate:", None, 0.0)
+        if "open" in body and str(body["open"]).startswith("https://"):
+            NSWorkspace.sharedWorkspace().openURL_(NSURL.URLWithString_(str(body["open"])))
 
     @objc.python_method
     def reload(self, select=None, settings=False):

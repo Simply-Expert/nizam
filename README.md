@@ -300,11 +300,16 @@ already working on the follow-up when you open it in the app. Anything else you 
 one quick headless Claude call (Haiku, no tools, nothing saved). That call can only pick one of those
 four actions and one of your agents; the bot then runs it.
 
-Setting it up takes two minutes:
+Setting it up takes two minutes. Settings, under *Phone*, walks you through the same steps:
 
-1. On Telegram, message [@BotFather](https://t.me/BotFather), send `/newbot`, and copy the token it gives you.
-2. Run `nizam telegram setup <token>`.
-3. Send any message to your new bot. It replies with a code. Run `nizam telegram pair <code>`.
+1. Install the Claude app on your phone and sign in with the account Claude Code uses on the Mac.
+2. On Telegram, message [@BotFather](https://t.me/BotFather) and send `/newbot`. Give the bot any name, then
+   a username that ends in `bot`. BotFather replies with a token like `123456789:AAH…`; keep it private.
+3. Paste the token into Settings, or run `nizam telegram setup <token>`.
+4. Send any message to your new bot. It replies with a code. Enter it in Settings, or run
+   `nizam telegram pair <code>`.
+
+The bot runs inside the menu bar app, so it answers only while `nizam app` is running.
 
 From then on the bot answers only that Telegram account and ignores everyone else. Nizam asks Telegram for
 new messages by long polling, so the connection only ever goes out from the Mac. Nothing at home is open
@@ -323,7 +328,7 @@ While an agent is awake:
 
 Sessions start in `acceptEdits` mode. Settings, under *Phone*, changes that and the idle time; so do
 `permission_mode` (`default`, `acceptEdits`, `plan`, `auto`) and `idle_hours` (`0` for never) in
-`~/.nizam/telegram.json`. Settings can also connect and pair the bot instead of the commands below.
+`~/.nizam/telegram.json`.
 The bot can also message you first. `/notify on` (or `nizam telegram notify on`) sends you what newly
 needs you: a blocked session, a routine that failed or found something, a follow-up due at its time.
 It waits until the Mac has gone untouched for 5 minutes, so you don't get a buzz on your phone for

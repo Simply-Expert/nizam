@@ -520,7 +520,8 @@ class Bot:
                 pending[code] = {"user": user, "chat": chat, "name": who, "at": now}
             self.state["pending"] = pending
             _save(STATE_FILE, self.state)
-        self.send(chat, "To let this Telegram account wake your agents, run this on your Mac within 10 minutes:\n\n"
+        self.send(chat, f"Your code is {code}. To let this Telegram account wake your agents, enter it in Nizam's "
+                        "Settings, under Phone, within 10 minutes. Or run this on your Mac:\n\n"
                         f"nizam telegram pair {code}")
 
     def command(self, chat: int, text: str) -> None:

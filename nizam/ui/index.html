@@ -162,7 +162,8 @@ body.settings .list { display: none; }
 .set .r .c input.wide { width: 230px; }
 .set ol { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
 .set a { color: var(--accent); }
-.set code { font-family: var(--mono); font-size: 12px; }
+.set code { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+.set .r .l span b.warn { display: inline; font-weight: 600; color: var(--needs); }
 aside .brand .setbtn { padding: 3px 5px; color: var(--muted); display: inline-flex; }
 aside .brand .setbtn svg { width: 18px; height: 18px; }
 aside .brand .setbtn:hover { color: var(--text); }
@@ -419,6 +420,11 @@ function openCtx(x, y, root) {
   }));
 }
 document.addEventListener('click', e => { if (!e.target.closest('#ctx')) $('#ctx').classList.remove('open'); });
+document.addEventListener('click', e => {
+  // The app's web view opens no new windows; the Mac's browser (or Telegram) opens the link instead.
+  const a = e.target.closest('a[target="_blank"]');
+  if (a && NATIVE) { e.preventDefault(); NATIVE.postMessage({open: a.href}); }
+});
 
 /* ---------- list ---------- */
 let NAV = [];
@@ -736,15 +742,20 @@ function renderSettings() {
     + `</div>`;
 
   h += `<div class="set"><h2>Phone</h2>`;
+  const botLink = T.bot ? `<a href="https://t.me/${encodeURIComponent(T.bot)}" target="_blank">${bot}</a>` : '';
+  const quiet = A.running ? '' : '<br><b class="warn">The menu bar app is not running, so the bot cannot answer.</b> Start it with <code>nizam app --detach</code>.';
   if (!T.bot) {
-    h += setRow('Telegram', `Wake agents from your phone, and get a message when something needs you.
-      <ol><li>On Telegram, message <a href="https://t.me/BotFather" target="_blank">@BotFather</a>, send <code>/newbot</code>, and copy the token it gives you.</li><li>Paste the token here and connect.</li></ol>`,
-      `<input type="text" class="wide" id="tgToken" placeholder="123456:ABC-…" spellcheck="false" autocomplete="off"><button class="primary" data-act="connect">Connect</button>`);
+    h += setRow('Telegram', `Wake an agent from your phone, then talk to it in the Claude app. The bot also messages you when something needs you. Setting it up takes about two minutes:
+      <ol><li>Install the Claude app on your phone and sign in with the account Claude Code uses on this Mac. That is where you talk to an awake agent.</li>
+      <li>In Telegram, open <a href="https://t.me/BotFather" target="_blank">@BotFather</a> and send <code>/newbot</code>. Give the bot any name, then a username that ends in <code>bot</code>, like <code>yourname_nizam_bot</code>.</li>
+      <li>BotFather replies with a token like <code>123456789:AAH…</code>. Paste it here and connect. Keep it private: whoever has it controls the bot.</li>
+      <li>Next, you pair your Telegram account, so the bot answers only you.</li></ol>`,
+      `<input type="text" class="wide" id="tgToken" placeholder="123456789:AAH…" spellcheck="false" autocomplete="off"><button class="primary" data-act="connect">Connect</button>`);
   } else {
-    h += setRow('Telegram', `${bot} · ${T.paired ? `answers ${T.paired === 1 ? 'only your account' : `${T.paired} paired accounts`}` : 'not paired yet'}`,
+    h += setRow('Telegram', `${botLink} · ${T.paired ? `answers ${T.paired === 1 ? 'only your account' : `${T.paired} paired accounts`}. Send it <code>/help</code> to see what it does, or <code>/wake</code> to try it.` : 'not paired yet'}${quiet}`,
                 `<button data-act="disconnect">Disconnect</button>`);
     if (!T.paired)
-      h += setRow('Pair your account', `Send any message to ${bot} on Telegram. It replies with a code; enter it here within 10 minutes.`,
+      h += setRow('Pair your account', `Open ${botLink} in Telegram and send it any message, like <code>hi</code>. It replies with a 6-character code; enter it here within 10 minutes.`,
                   `<input type="text" id="tgCode" placeholder="A1B2C3" spellcheck="false" autocomplete="off"><button class="primary" data-act="pair">Pair</button>`);
     h += setRow('Message me', 'When something newly needs you: a blocked session, a routine that failed or found something, a follow-up due at its time. Once for each thing.',
                 `<select data-set="notify">${opts([['off', 'Never'], ['away', 'When I’m away'], ['always', 'Always']], T.notify)}</select>`);

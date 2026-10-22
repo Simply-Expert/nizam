@@ -216,7 +216,7 @@ def telegram_cmd(action: str, args: list[str]) -> int:
         bot = me.get("username")
         print(f"✓ @{bot} is set up")
         if not telegram.load_config().get("users"):
-            print(f"  Now send any message to @{bot} on Telegram. It replies with a code; then run:"
+            print(f"  Now send any message to @{bot} on Telegram (https://t.me/{bot}). It replies with a code; then run:"
                   "\n  nizam telegram pair <code>")
     elif action == "pair":
         if not args:
