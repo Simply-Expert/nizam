@@ -2,6 +2,17 @@
 
 The newest release is at the top.
 
+## 0.3.2 · 22 Oct 2026
+
+- **The bot comes back on its own.** If Nizam crashes, macOS now starts it again within
+  seconds, so the bot keeps answering. Choosing Quit still keeps it quit.
+- **Quicker after the Mac wakes.** The bot reconnects to Telegram as soon as you open the
+  lid, instead of waiting up to a few minutes on a connection that died during sleep.
+- **No surprise taps.** A button you pressed while the Mac was asleep is no longer acted on
+  hours later. The bot tells you it arrived late, so you can tap it again.
+- **A warning when the bot goes quiet.** `nizam telegram status` and `nizam doctor` now say
+  when the app has not heard from Telegram for over 5 minutes.
+
 ## 0.3.1 · 22 Oct 2026
 
 - **Start a follow-up from your phone.** `/followups` numbers the ones due now, with a button
