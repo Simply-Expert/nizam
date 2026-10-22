@@ -2,6 +2,17 @@
 
 The newest release is at the top.
 
+## 0.3.3 · 22 Oct 2026
+
+- **Connecting Telegram, step by step.** Settings, under *Phone*, now walks you through it:
+  the Claude app on your phone, what BotFather asks for, where the token goes, and pairing.
+  Once connected, the bot's name opens its chat. If the menu bar app is not running, Settings
+  says the bot cannot answer and how to start it.
+- **Links open from the menu bar app.** Clicking *@BotFather* or your bot in Settings did
+  nothing there before; now it opens Telegram or your browser.
+- **Pair from Settings.** The pairing code the bot sends now says you can enter it in
+  Settings, not only in a terminal.
+
 ## 0.3.2 · 22 Oct 2026
 
 - **The bot comes back on its own.** If Nizam crashes, macOS now starts it again within
