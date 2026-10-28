@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -111,6 +112,69 @@ return "missing"'''
     return "found" in _osascript(script)
 
 
+_TTY = re.compile(r"^ttys\d{1,4}$")
+_ghostty_ids: dict[tuple[int, str], str] = {}
+
+_GHOSTTY_NAMES = """
+tell application "Ghostty"
+    set out to ""
+    repeat with s in terminals
+        set out to out & (id of s) & (character id 9) & (name of s) & linefeed
+    end repeat
+    return out
+end tell"""
+
+
+def _set_title(tty: str, title: str) -> bool:
+    title = "".join(c for c in title if c >= " " and c != "\x7f")
+    try:
+        fd = os.open(f"/dev/{tty}", os.O_WRONLY | os.O_NOCTTY | os.O_NONBLOCK)
+    except OSError:
+        return False
+    try:
+        os.write(fd, f"\033]2;{title}\007".encode())
+        return True
+    except OSError:
+        return False
+    finally:
+        os.close(fd)
+
+
+def _ghostty_names() -> dict[str, str]:
+    return dict(line.split("\t", 1) for line in _osascript(_GHOSTTY_NAMES).splitlines() if "\t" in line)
+
+
+def _ghostty_terminal(tty: str) -> str | None:
+    """Ghostty's scripting knows no tty, so title the tty with a one-off mark and see which terminal shows it."""
+    before = _ghostty_names()
+    mark = f"nizam-{uuid.uuid4().hex[:12]}"
+    found = None
+    for _ in range(5):
+        if not _set_title(tty, mark):
+            return None
+        found = next((tid for tid, name in _ghostty_names().items() if name == mark), None)
+        if found:
+            break
+    # An empty title lets the session's own title return when the mark was never seen.
+    _set_title(tty, before.get(found or "", ""))
+    return found
+
+
+def focus_ghostty_tty(pid: int, tty: str) -> bool:
+    if not _TTY.match(tty):
+        return False
+    for _ in range(2):
+        tid = _ghostty_ids.get((pid, tty)) or _ghostty_terminal(tty)
+        if not tid:
+            return False
+        if "found" in _osascript(f'tell application "Ghostty"\nfocus terminal id {json.dumps(tid)}\n'
+                                 'activate\nreturn "found"\nend tell'):
+            _ghostty_ids[(pid, tty)] = tid
+            return True
+        _ghostty_ids.pop((pid, tty), None)
+    return False
+
+
 def focus_ghostty(cwd: str, titles: list[str]) -> bool:
     """Ghostty 1.3+ scripting: terminals expose title and working directory
     but not the tty. Title is the primary key (the agent sets it to the session
@@ -181,6 +245,8 @@ def focus(pid: int, cwd: str = "", titles: list[str] | None = None, provider: st
     if app == "Terminal" and focus_terminal_tab(host["tty"]):
         return True
     if app == "iTerm" and focus_iterm_tab(host["tty"]):
+        return True
+    if app == "Ghostty" and focus_ghostty_tty(pid, host["tty"]):
         return True
     if app == "Ghostty" and cwd and focus_ghostty(cwd, titles or []):
         return True
