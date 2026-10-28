@@ -20,6 +20,7 @@ AREA_MARKER = "INSTRUCTIONS.md"
 SKIP_DIRS = {"node_modules", ".git", ".venv", "venv", "__pycache__", "dist",
              "build", ".next", "archive", ".archive", "data", "cache"}
 MAX_AREA_DEPTH = 4
+MAX_FANOUT = 100
 HOME = Path.home()
 
 
@@ -91,7 +92,8 @@ def _scan_areas(root: Path) -> dict[str, Area]:
         rel_parts = d.relative_to(root).parts
         dirnames[:] = [n for n in dirnames
                        if n not in SKIP_DIRS and not n.startswith(".")]
-        if len(rel_parts) >= MAX_AREA_DEPTH:
+        # Hundreds of sibling folders are data (uploads, ids), never standing topics.
+        if len(rel_parts) >= MAX_AREA_DEPTH or len(dirnames) > MAX_FANOUT:
             dirnames[:] = []
         if d != root and AREA_MARKER in filenames:
             rel = "/".join(rel_parts)
