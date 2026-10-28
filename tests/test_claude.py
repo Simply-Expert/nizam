@@ -103,13 +103,32 @@ class Transcripts(Case):
         self.assertEqual({k: v[0] for k, v in t.background.items()}, {"bsh2": "shell", "mon1": "monitor"})
         self.assertAlmostEqual(t.background["bsh2"][1], t0 + 2, places=3)
 
-    def test_a_launch_in_the_skipped_middle_is_not_tracked(self):
+    def test_a_launch_far_back_in_a_long_transcript_is_still_tracked(self):
         t0 = self.now - 5000
         filler = "x" * 2000
-        entries = [fx.user("go", t0, self.cwd), fx.launched({"backgroundTaskId": "early"}, t0 + 1, self.cwd)]
+        entries = [fx.user("go", t0, self.cwd), fx.launched({"backgroundTaskId": "early"}, t0 + 1, self.cwd),
+                   fx.launched({"backgroundTaskId": "ended"}, t0 + 1, self.cwd)]
         entries += [fx.assistant(f"{i} {filler}", t0 + i, self.cwd) for i in range(2, 400)]
-        entries += [fx.launched({"backgroundTaskId": "late"}, t0 + 400, self.cwd)]
-        self.assertEqual(list(self.read(entries).background), ["late"])
+        entries += [fx.notification("ended", t0 + 400, self.cwd)]
+        entries += [fx.assistant(f"{i} {filler}", t0 + i, self.cwd) for i in range(401, 600)]
+        entries += [fx.launched({"backgroundTaskId": "late"}, t0 + 600, self.cwd)]
+        self.assertEqual(list(self.read(entries).background), ["early", "late"])
+
+    def test_tasks_follow_appends_and_rewrites(self):
+        t0 = self.now - 100
+        path = fx.write_transcript(self.home, SID, self.cwd, [fx.user("go", t0, self.cwd),
+                                                               fx.launched({"backgroundTaskId": "b1"}, t0 + 1, self.cwd)])
+        self.assertEqual(list(fx.read_transcript(path).background), ["b1"])
+        b2 = json.dumps(fx.launched({"backgroundTaskId": "b2"}, t0 + 3, self.cwd)) + "\n"
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(fx.notification("b1", t0 + 2, self.cwd)) + "\n" + b2[:40])
+        self.assertEqual(fx.read_transcript(path).background, {})
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(b2[40:])
+        self.assertEqual(list(fx.read_transcript(path).background), ["b2"])
+        fx.write_transcript(self.home, SID, self.cwd, [fx.user("go", t0, self.cwd),
+                                                       fx.launched({"backgroundTaskId": "b3"}, t0 + 1, self.cwd)])
+        self.assertEqual(list(fx.read_transcript(path).background), ["b3"])
 
 
 

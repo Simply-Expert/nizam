@@ -209,18 +209,18 @@ def conversation_tail(session_id: str, chars: int) -> str:
     return "\n\n".join(reversed(out))
 
 
-def _track_task(t: Transcript, r: dict, ts: float) -> None:
+def _track_task(bg: dict, r: dict, ts: float) -> None:
     if r.get("backgroundTaskId"):
-        t.background[r["backgroundTaskId"]] = ("shell", ts)
+        bg[r["backgroundTaskId"]] = ("shell", ts)
     elif r.get("isAsync") and r.get("agentId"):
-        t.background[r["agentId"]] = ("agent", ts)
+        bg[r["agentId"]] = ("agent", ts)
     elif r.get("taskId"):
-        t.background[r["taskId"]] = ("monitor" if "persistent" in r or "timeoutMs" in r else "task", ts)
+        bg[r["taskId"]] = ("monitor" if "persistent" in r or "timeoutMs" in r else "task", ts)
     elif r.get("task_id") and str(r.get("message", "")).startswith("Successfully stopped"):
-        t.background.pop(r["task_id"], None)
+        bg.pop(r["task_id"], None)
 
 
-def _end_tasks(t: Transcript, e: dict) -> None:
+def _end_tasks(bg: dict, e: dict) -> None:
     # Monitor events arrive as notifications too; only the final one carries a <status>.
     if e.get("type") == "user":
         text = _user_text((e.get("message") or {}).get("content")) or ""
@@ -233,7 +233,39 @@ def _end_tasks(t: Transcript, e: dict) -> None:
     for block in _NOTIFICATION.findall(text):
         tid, status = _TASK_ID.search(block), _STATUS.search(block)
         if tid and status and status.group(1) in TASK_ENDED:
-            t.background.pop(tid.group(1), None)
+            bg.pop(tid.group(1), None)
+
+
+_tasks: dict[Path, tuple[int, bytes, dict]] = {}
+_SEAM = 64
+
+
+def _background(path: Path, f) -> dict[str, tuple[str, float]]:
+    """Tasks still running, across the whole file since screenshots can put a launch megabytes back."""
+    offset, seam, bg = _tasks.get(path, (0, b"", {}))
+    f.seek(max(0, offset - _SEAM))
+    if f.read(len(seam)) != seam:
+        offset, seam, bg = 0, b"", {}
+    f.seek(offset)
+    bg = dict(bg)
+    for raw in f:
+        if not raw.endswith(b"\n"):
+            break           # still being written
+        offset += len(raw)
+        seam = (seam + raw)[-_SEAM:]
+        if b"toolUseResult" not in raw and b"task-notification" not in raw:
+            continue
+        try:
+            e = json.loads(raw)
+        except ValueError:
+            continue
+        if b"task-notification" in raw:
+            _end_tasks(bg, e)
+        if e.get("type") in ("user", "assistant") and not e.get("isSidechain") \
+                and isinstance(e.get("toolUseResult"), dict):
+            _track_task(bg, e["toolUseResult"], _parse_ts(e.get("timestamp")) or 0.0)
+    _tasks[path] = (offset, seam, bg)
+    return dict(bg)
 
 
 def read_transcript(path: Path, full: bool = False) -> Transcript | None:
@@ -249,14 +281,13 @@ def read_transcript(path: Path, full: bool = False) -> Transcript | None:
                 head = f.read(64 * 1024)
                 f.seek(-TAIL_BYTES, os.SEEK_END)
                 tail = f.read()
-                # A launch in the head may have ended in the skipped middle, so only the tail tracks tasks.
-                lines = [(raw, False) for raw in head.split(b"\n")] + \
-                        [(raw, True) for raw in tail[tail.find(b"\n") + 1:].split(b"\n")]
+                lines = head.split(b"\n") + tail[tail.find(b"\n") + 1:].split(b"\n")
             else:
-                lines = [(raw, True) for raw in f.read().split(b"\n")]
+                lines = f.read().split(b"\n")
+            t.background = _background(path, f)
     except OSError:
         return None
-    for raw, track in lines:
+    for raw in lines:
         if not raw.strip():
             continue
         try:
@@ -270,8 +301,6 @@ def read_transcript(path: Path, full: bool = False) -> Transcript | None:
         if typ in ("custom-title", "ai-title"):
             t.custom_title = e.get("customTitle") or e.get("aiTitle") or e.get("title") or t.custom_title
             continue
-        if track and b"task-notification" in raw:
-            _end_tasks(t, e)
         if typ not in ("user", "assistant") or e.get("isSidechain"):
             continue
         t.entries += 1
@@ -283,8 +312,6 @@ def read_transcript(path: Path, full: bool = False) -> Transcript | None:
             t.last_ts = ts
         msg = e.get("message") or {}
         content = msg.get("content")
-        if track and isinstance(e.get("toolUseResult"), dict):
-            _track_task(t, e["toolUseResult"], ts or 0.0)
         if typ == "user":
             txt = _user_text(content)
             if txt is not None:
