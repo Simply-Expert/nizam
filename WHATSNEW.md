@@ -2,6 +2,30 @@
 
 The newest release is at the top.
 
+## 0.4.0 · 28 Oct 2026
+
+- **Check first.** A new board view lists the sessions waiting on you as numbered cards, in
+  the order to look at them, each with what it needs from you and up to three replies you
+  could send. Click a card to jump to it. It is off by default, since each card costs a call
+  on your Claude plan; turn it on in Settings.
+- **Sessions you can reach from your phone.** Sessions Nizam starts or resumes now run with
+  Remote Control, so the Claude app can pick them up. *Jump to* on a session no terminal
+  shows opens it there, and a Telegram message about a blocked session gets an *Open
+  session* button. A *Reachable from your phone* setting turns this off.
+- **Agents can wake each other.** `nizam request wake <peer> "<topic>"` starts a session for
+  a linked agent, and the two talk it through live; `nizam request sleep <peer>` ends it.
+- **More from Telegram.** `/followups` also lists open requests between agents. A follow-up
+  started from the phone opens in a terminal window at the Mac, or runs in the background
+  when the lid is shut.
+- **No more "waiting on you" while an agent is still working.** A session waiting on a
+  background agent could show as waiting on you once its screenshots had pushed the agent's
+  launch far back in the transcript.
+- **A quicker menu bar.** The board is built off the main thread, and folders that hold data
+  (thousands of subfolders) are no longer searched for areas, so the badge and menus stop
+  freezing every half minute.
+- **Jump to the right Ghostty tab.** Several sessions in one folder with the same title now
+  each jump to their own terminal.
+
 ## 0.3.3 · 22 Oct 2026
 
 - **Connecting Telegram, step by step.** Settings, under *Phone*, now walks you through it:
