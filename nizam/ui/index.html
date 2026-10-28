@@ -131,6 +131,50 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .onboard p { color: var(--muted); margin: 0 0 12px; }
 .onboard code { font-family: var(--mono); font-size: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; color: var(--text); }
 
+/* ---- check first: one wide column, no detail pane ---- */
+body.triage .detail { display: none; }
+@media (min-width: 761px) { body.triage .list { grid-column: 2 / 4; border-right: 0; } }
+aside .row.tri .newo { color: var(--accent); font-size: 9px; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 4px var(--accent-bg); } }
+.tview { max-width: 920px; margin: 0 auto; padding: 22px 24px 48px; }
+.tview .thead { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.tview .thead h2 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); font-weight: 600; }
+.tview .thead .n { color: var(--muted); font-size: 12px; }
+.tview .thead .sp { flex: 1; }
+.tview .reorder { padding: 3px 12px; font-size: 12px; border-radius: 999px; animation: pulse 1.6s ease-in-out infinite; }
+.tview .keys { color: var(--muted); font-size: 12px; margin-top: 18px; }
+.tview kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.item.tri { grid-template-columns: 30px 1fr auto; gap: 2px 12px; padding: 14px 16px; margin-bottom: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.item.tri:hover { background: var(--panel); border-color: var(--muted); }
+.item.tri.on { background: var(--panel); border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+.item.tri .num { grid-row: 1 / 8; font: 600 18px var(--mono); color: var(--muted); padding-top: 1px; }
+.item.tri.needs .num { color: var(--needs); }
+.item.tri .who, .item.tri .t, .item.tri .nd, .item.tri .tw, .item.tri .tchips { grid-column: 2; }
+.item.tri .who { font-size: 12px; color: var(--muted); }
+.item.tri .who b { color: var(--text); font-weight: 600; }
+.item.tri .t { font-size: 15px; white-space: normal; margin: 2px 0 3px; }
+.item.tri .nd { font-size: 14px; line-height: 1.5; }
+.item.tri .tw { font-size: 12px; color: var(--muted); font-style: italic; margin-top: 5px; }
+.item.tri .tchips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 9px; }
+.item.tri .side { grid-column: 3; grid-row: 1 / 4; text-align: right; font-size: 12px; color: var(--muted); white-space: nowrap; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.item.tri .rowdone { display: none; }
+.item.tri:hover .rowdone { display: inline-block; }
+.item.tri.stale .t, .item.tri.stale .nd { opacity: .6; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.pill.needs { background: var(--needs-bg); color: var(--needs); } .pill.inbox { background: var(--inbox-bg); color: var(--inbox); }
+.tchip { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.tchip.high { color: var(--needs); border-color: var(--needs); } .tchip.quick { color: var(--inbox); border-color: var(--inbox); }
+.tchip.deep { color: var(--working); border-color: var(--working); } .tchip.new { color: var(--accent); border-color: var(--accent); }
+button.opt { font-size: 12px; padding: 3px 10px; border-radius: 8px; background: var(--bg); }
+button.opt:hover { border-color: var(--accent); color: var(--accent); }
+.tview .wline { margin-top: 22px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 0; }
+.tview .wline b { color: var(--working); font-weight: 600; margin-right: 10px; }
+.tview .wline a { color: var(--text); cursor: pointer; }
+.tview .wline a:hover { color: var(--accent); text-decoration: underline; }
+.tview .wline a + a::before { content: "·"; color: var(--muted); margin: 0 8px; display: inline-block; }
+.detail .card { background: var(--accent-bg); padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; max-width: 820px; }
+.detail .card .opts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
 /* ---- detail ---- */
 .detail { padding: 18px 22px 30px; }
 .detail h1 { font-size: 17px; margin: 0 0 4px; }
@@ -324,6 +368,20 @@ function sortedAgents() {
     return (cb.needs*100+cb.working*10+cb.inbox) - (ca.needs*100+ca.working*10+ca.inbox) || a.display_name.localeCompare(b.display_name);
   });
 }
+function triageOn() { return !!(DATA.triage && DATA.triage.enabled); }
+function cardOf(id) { const i = triageOn() && DATA.triage.items.find(x => x.id === id); return i ? i.card : null; }
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); }
+  catch { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); }
+}
+async function replyAndJump(id, text) { await copyText(text); toast('Copied. Paste it in the session', true); openSession(id); }
+async function applyOrder() { await api('/api/triage/apply', {}); refresh(true); }
+// The order holds still only while it is being looked at; arriving at it takes the newest.
+let FRESH = true;
+function cameBack() { FRESH = true; if (DATA) refresh(true); }
+function boardShown() { cameBack(); }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) cameBack(); });
+window.addEventListener('focus', cameBack);
 function visible(list) { return showDone ? list : list.filter(s => s.bucket !== 'done'); }
 function currentList() {
   let list = SEL.agent ? byAgent(SEL.agent) : DATA.sessions;
@@ -335,9 +393,11 @@ const ONBOARD = `<div class="onboard"><h2>No agents yet</h2><p>Every folder you 
 function render() {
   if (!DATA) return;
   document.body.classList.toggle('settings', SETTINGS);
+  if (SETTINGS) document.body.classList.remove('triage');
   if (SETTINGS) { renderSide(); renderSettings(); return; }
   if (!DATA.agents.length) { $('#side').innerHTML = `<div class="brand">Nizam <span class="ar">نظام</span></div>`; $('#list').innerHTML = ONBOARD; $('#detail').innerHTML = ''; $('#detail').classList.remove('open'); NAV = []; return; }
-  if (SEL.agent && !agentOf(SEL.agent)) SEL = {agent: null, area: null};
+  if ((SEL.agent && !agentOf(SEL.agent)) || (SEL.triage && !triageOn())) SEL = {agent: null, area: null};
+  document.body.classList.toggle('triage', !!SEL.triage);
   renderSide(); renderList(); renderDetail();
 }
 
@@ -345,7 +405,8 @@ function render() {
 function renderSide() {
   const all = visible(DATA.sessions);
   let h = `<div class="brand">Nizam <span class="ar">نظام</span><span class="sp"></span><button class="quiet setbtn ${SETTINGS?'on':''}" id="setBtn" title="Settings (⌘,)" aria-label="Settings">${GEAR}</button>${NATIVE?`<button class="quiet setbtn ${DATA.prefs.board_pinned?'on':''}" id="pinBtn" aria-label="Keep board open" title="${DATA.prefs.board_pinned?'Unpin: back to a popover that closes on click-away':'Pin: keep the board open as a window'}">${PIN}</button>`:''}<button class="primary" id="newBtn" title="New session (n)">＋</button></div>`;
-  h += `<div class="row ${!SEL.agent&&!SETTINGS?'on':''}" data-a=""><span class="name">All agents</span>${badges(countsFor(all, null), lateCount(null), requestCount(null))}</div>`;
+  if (triageOn()) h += `<div class="row tri ${SEL.triage&&!SETTINGS?'on':''}" data-tri="1" title="Waiting sessions in the order to check them"><span class="name">Check first</span>${DATA.triage.reorder?'<span class="newo" title="A new order is ready">●</span>':''}<span class="cnt">${DATA.triage.items.length?`<b class="i">${DATA.triage.items.length}</b>`:''}</span></div>`;
+  h += `<div class="row ${!SEL.agent&&!SEL.triage&&!SETTINGS?'on':''}" data-a=""><span class="name">All agents</span>${badges(countsFor(all, null), lateCount(null), requestCount(null))}</div>`;
   h += `<div class="sec">Agents</div>`;
   const agents = sortedAgents();
   for (const a of agents) {
@@ -356,6 +417,8 @@ function renderSide() {
   h += `<div class="foot"><label class="chk"><input type="checkbox" id="showDone" ${showDone?'checked':''}> Show done</label></div>`;
   const side = $('#side'); side.innerHTML = h;
   side.querySelectorAll('[data-a]').forEach(el => el.addEventListener('click', () => { SEL = {agent: el.dataset.a || null, area: null}; save('sel', SEL); CUR = null; SETTINGS = false; render(); }));
+  const tri = side.querySelector('[data-tri]');
+  if (tri) tri.addEventListener('click', () => { SEL = {agent: null, area: null, triage: true}; save('sel', SEL); CUR = null; SETTINGS = false; FRESH = true; render(); });
   $('#newBtn').addEventListener('click', () => openModal());
   $('#setBtn').addEventListener('click', () => SETTINGS ? closeSettings() : openSettings());
   if (NATIVE) $('#pinBtn').addEventListener('click', () => NATIVE.postMessage({pin: !DATA.prefs.board_pinned}));
@@ -473,7 +536,47 @@ function sessionRow(s) {
   const rem = s.remind_at ? `<span class="rem ${s.remind_due?'due':''}" title="Reminder you set">⏰ ${esc(s.remind_label)}</span>` : '';
   return `<div class="item ${s.bucket} ${s.starred?'starred':''} ${CUR===s.id?'on':''}" data-id="${s.id}" title="Double-click or Enter to ${s.live?'jump to':'resume'}"><span class="dot ${s.bucket}">${dotFor(s)}</span><span class="t">${esc(s.title)}</span><span class="ago">${bg}${rem}<span class="agotxt">${esc(s.ago)}</span>${s.bucket==='closed'?`<button class="rowdone" data-done="${s.id}" title="Mark done">Done ✓</button>`:''}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
 }
+const KIND = {decide: 'decide', approve: 'approve', answer: 'answer', review: 'review', unblock: 'unblock', fyi: 'FYI'};
+function triageRow(i, n, s) {
+  const c = i.card;
+  const chips = c ? [`<span class="tchip">${esc(KIND[c.kind] || c.kind)}</span>`, `<span class="tchip ${esc(c.effort)}">${esc(c.effort)}</span>`,
+                     c.stakes === 'high' ? '<span class="tchip high">high stakes</span>' : ''].join('') : '';
+  const state = i.building ? '<span class="tchip">reading…</span>' : i.stale ? '<span class="tchip" title="The session moved on since this was written">out of date</span>' : '';
+  const replies = (c && c.options || []).map(o => `<button class="opt" data-reply="${esc(o)}" title="Copy, then jump to the session">${esc(o)}</button>`).join('');
+  return `<div class="item tri ${s.bucket} ${i.stale?'stale':''} ${CUR===s.id?'on':''}" data-id="${s.id}" title="Click or Enter to jump to it">
+    <span class="num">${n + 1}</span>
+    <span class="who"><b>${esc(s.agent_name)}</b>${s.area ? ' › ' + esc(s.area) : ''}${i.new ? ' <span class="tchip new">new</span>' : ''}</span>
+    <span class="t">${esc(c ? c.headline : s.title)}</span>
+    <span class="nd">${esc(c ? c.needs : i.building ? 'Reading the session…' : lastPara(s.preview))}</span>
+    ${i.why ? `<span class="tw">${esc(i.why)}</span>` : ''}
+    ${chips || state || replies ? `<span class="tchips">${chips}${state}${replies}</span>` : ''}
+    <span class="side"><span class="pill ${s.bucket}">${esc(s.label)}</span><span class="agotxt">${esc(s.ago)}</span><button class="rowdone" data-done="${s.id}" title="Mark done (d)">Done ✓</button></span></div>`;
+}
+function workingLink(s) {
+  const c = cardOf(s.id);
+  return `<a data-jump="${s.id}" title="${esc(c ? c.headline : s.title)} · ${esc(s.ago)}">${esc(s.agent_name)}${s.area ? ' › ' + esc(s.area) : ''}</a>`;
+}
+function renderTriage() {
+  const T = DATA.triage, byId = Object.fromEntries(DATA.sessions.map(s => [s.id, s]));
+  if (FRESH && T.reorder) { FRESH = false; applyOrder(); return; }
+  FRESH = false;
+  const items = T.items.filter(i => byId[i.id]);
+  const working = DATA.sessions.filter(s => s.bucket === 'working');
+  NAV = items.map(i => i.id);
+  if (!NAV.includes(CUR)) CUR = NAV[0] || null;
+  let h = `<div class="tview"><div class="thead"><h2>Check in this order</h2><span class="n">${items.length}</span><span class="sp"></span>${T.reorder ? '<button class="primary reorder" data-reorder="1" title="Put the list in the newest order (r)">New order ready · r</button>' : ''}</div>`;
+  h += items.map((i, n) => triageRow(i, n, byId[i.id])).join('') || `<div class="empty">Nothing is waiting on you</div>`;
+  if (working.length) h += `<div class="wline"><b>◐ Working · ${working.length}</b>${working.map(workingLink).join('')}</div>`;
+  h += `<div class="keys"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>⏎</kbd> or click to jump · <kbd>1</kbd>–<kbd>9</kbd> jump to · <kbd>d</kbd> done · <kbd>z</kbd> remind · a reply button copies it, then jumps</div></div>`;
+  const el = $('#list'); el.innerHTML = h;
+  el.querySelectorAll('[data-id]').forEach(c => c.addEventListener('click', () => { CUR = c.dataset.id; renderListSelection(); openSession(CUR); }));
+  el.querySelectorAll('[data-jump]').forEach(c => c.addEventListener('click', () => openSession(c.dataset.jump)));
+  el.querySelectorAll('[data-reply]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); replyAndJump(b.closest('[data-id]').dataset.id, b.dataset.reply); }));
+  el.querySelectorAll('[data-done]').forEach(b => b.addEventListener('click', async e => { e.stopPropagation(); await api(`/api/sessions/${b.dataset.done}/done`, {}); refresh(true); }));
+  const re = el.querySelector('[data-reorder]'); if (re) re.addEventListener('click', applyOrder);
+}
 function renderList() {
+  if (SEL.triage) return renderTriage();
   const agent = agentOf(SEL.agent);
   const list = currentList();
   const allFu = followupsFor(SEL.agent, SEL.area);
@@ -676,18 +779,21 @@ function renderDetail() {
   d.classList.toggle('open', detailOpen && !!s);
   if (!s) { d.innerHTML = `<div class="empty">Select a session</div>`; return; }
   const doneBtn = s.bucket === 'done' ? `<button data-act="reopen">Reopen</button>` : `<button data-act="done">Done ✓</button>`;
+  const card = ['needs', 'inbox'].includes(s.bucket) ? cardOf(s.id) : null;
   d.innerHTML = `
     <button class="back quiet" id="back">‹ Back</button>
     <h1><button class="star ${s.starred?'on':''}" data-act="star" title="${s.starred?'Unstar':'Star'} (s)"></button><span class="t" title="Click to rename">${esc(s.title)}</span></h1>
     <div class="meta"><b>${esc(s.agent_name)}</b>${s.area?` › ${esc(s.area)}`:''} · <span class="ago">${esc(s.ago)}</span> ago ${s.live?'<span class="tag live">live</span>':'<span class="tag">exited</span>'}${s.question?'<span class="tag q">asks something</span>':''}${s.waiting?`<span class="tag bgw">⧗ ${esc(s.waiting)} running</span>`:''}${s.remind_at?`<span class="tag rem ${s.remind_due?'due':''}">⏰ ${esc(s.remind_label)}</span>`:''}${(!s.hooked && s.live)?'<span class="tag" title="No hook events yet; state inferred from the transcript">inferred</span>':''}</div>
     <div class="state ${s.bucket}"><span class="dot ${s.bucket}">${dotFor(s)}</span>${esc(s.label)}</div>
     ${s.detail ? `<div class="why">${esc(s.detail)}</div>` : ''}
+    ${card ? `<div class="card"><b>Needs from you:</b> ${esc(card.needs)}${card.options && card.options.length ? `<div class="opts">${card.options.map(o => `<button class="opt" data-reply="${esc(o)}" title="Copy, then jump to the session">${esc(o)}</button>`).join('')}</div>` : ''}</div>` : ''}
     <div class="actions"><button class="primary" data-act="open">${s.live?'Jump to':'Resume'}</button>${doneBtn}<button id="remBtn" title="Bring this session back at a set time (z)">⏰ ${s.remind_at ? esc(s.remind_label) : 'Remind me…'}</button></div>
     ${s.last_prompt ? `<div class="prompt">You: ${esc(s.last_prompt)}</div>` : ''}
     <div class="msg">${esc(s.preview || '(no reply yet)')}</div>
     <div class="path">${esc(s.cwd)}</div>`;
   d.querySelectorAll('[data-act]').forEach(el => el.addEventListener('click', async () => { await api(`/api/sessions/${s.id}/${el.dataset.act}`, {}); refresh(true); }));
   $('#remBtn').addEventListener('click', () => remindBox(s));
+  d.querySelectorAll('[data-reply]').forEach(b => b.addEventListener('click', () => replyAndJump(s.id, b.dataset.reply)));
   d.querySelector('h1 .t').addEventListener('click', async () => {
     const name = await ask('Session title', s.title, 'Empty restores the automatic title');
     if (name === null) return;
@@ -776,6 +882,8 @@ function renderSettings() {
              `<select data-set="launcher">${opts(A.launchers.map(l => [l, LAUNCHER_LABEL[l] || l]), A.launcher)}</select>`)
     + (A.launcher === 'Claude' ? setRow('Everything else opens in', 'Resuming a closed session, new git worktrees, and requests from other agents, which start in plan mode.',
              `<select data-set="terminal">${opts(A.launchers.filter(l => l !== 'Claude').map(l => [l, LAUNCHER_LABEL[l] || l]), A.terminal)}</select>`) : '')
+    + setRow('Check first', 'Claude reads what each waiting session last said and suggests which to answer first. It uses your Claude plan: a quick Haiku call when sessions stop, and a Sonnet call to order them.',
+             sw('data-set="triage"', A.triage))
     + setRow('Untimed follow-ups come up at', 'A follow-up with a time of its own comes up then instead.',
              `<input type="text" data-set="followup_hour" value="${esc(SET.followups.hour)}" spellcheck="false">`)
     + `</div>`;
@@ -966,6 +1074,10 @@ document.addEventListener('keydown', e => {
   if (e.key === 'z' && CUR && !e.metaKey && !e.ctrlKey) { const s = DATA.sessions.find(x => x.id === CUR); if (s) { e.preventDefault(); remindBox(s); } }
   if (e.key === 'd' && CUR) { const s = DATA.sessions.find(x => x.id === CUR); if (s && s.bucket !== 'done') api(`/api/sessions/${CUR}/done`, {}).then(() => refresh(true)); }
   if (e.key === 'Enter') openSession(CUR);
+  if (SEL.triage && !e.metaKey && !e.ctrlKey) {
+    if (e.key === 'r' && DATA.triage && DATA.triage.reorder) applyOrder();
+    if (/^[1-9]$/.test(e.key) && NAV[+e.key - 1]) { CUR = NAV[+e.key - 1]; openSession(CUR); render(); }
+  }
 });
 
 refresh(true);

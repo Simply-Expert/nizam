@@ -166,6 +166,10 @@ class Provider:
         """(the session the server opened, the page that starts new ones), as far as its output tells."""
         return None, None
 
+    def conversation_tail(self, session_id: str, chars: int) -> str:
+        """The last `chars` or so of a session's conversation as plain text, oldest first."""
+        return ""
+
     def structured_command(self, exe: str, system_prompt: str, schema: dict) -> list[str] | None:
         """argv for one quick answer shaped by `schema`, with no tools and nothing saved; the prompt goes on stdin."""
         return None

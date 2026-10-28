@@ -34,7 +34,7 @@ from UserNotifications import (
 from WebKit import WKWebView, WKWebViewConfiguration, WKUserContentController
 import objc
 
-from . import telegram, terminal, update
+from . import telegram, terminal, triage, update
 from .paths import NIZAM_DIR, ensure_dirs
 from .cli import start_update
 from .launch import BUNDLE_ID, NOTIFICATION_SOUND, PID_FILE, QUIT_FLAG, app_running, login_enabled, set_login
@@ -268,6 +268,11 @@ class BoardVC(NSViewController, protocols=[objc.protocolNamed("WKScriptMessageHa
     def refresh(self):
         if self.web is not None and not self.web.isLoading():
             self.web.evaluateJavaScript_completionHandler_("refresh(true)", None)
+
+    @objc.python_method
+    def shown(self):
+        if self.web is not None and not self.web.isLoading():
+            self.web.evaluateJavaScript_completionHandler_("typeof boardShown === 'function' && boardShown()", None)
 
 
 def _track_hover(view):
@@ -653,10 +658,19 @@ class AppDelegate(NSObject):
         items = {k: [] for k in SEGMENTS}
         needs_now = needs_you(snap)
         agent_names = {a["root"]: a["display_name"] for a in snap["agents"]}
+        tri = triage.get()
+        view = tri.view(snap) if tri else {}
+        cards = {i["id"]: i["card"] for i in view.get("items", []) if i["card"]}
         for s in snap["sessions"]:
             if s["bucket"] in items:
-                items[s["bucket"]].append({"id": s["id"], "title": s["title"], "session": s,
-                                           "sub": f"{s['agent_name']} · {s['label']} · {s['ago']}"})
+                c = cards.get(s["id"])
+                items[s["bucket"]].append({"id": s["id"], "title": c["headline"] if c else s["title"], "session": s,
+                                           "sub": f"{s['agent_name']} · {c['needs']}" if c
+                                           else f"{s['agent_name']} · {s['label']} · {s['ago']}"})
+        if view.get("enabled"):
+            rank = {i["id"]: n for n, i in enumerate(view["items"])}
+            for b in ("needs", "inbox"):
+                items[b].sort(key=lambda r: rank.get(r["id"], len(rank)))
         for f in snap.get("followups", []):
             if f["due"] != "upcoming":
                 when = f["when"] if f["due"] == "today" else f"{-f['days']}d overdue"
@@ -899,6 +913,7 @@ class AppDelegate(NSObject):
             if anchor is self.badge_view:
                 self._install_monitor()
         NSApp.activateIgnoringOtherApps_(True)
+        self.vc.shown()
 
     @objc.python_method
     def _host(self, pinned):
@@ -1110,6 +1125,7 @@ def run(port: int) -> int:
     httpd = make_server(board, port)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     telegram.start(board)
+    triage.start(board)
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
     delegate = AppDelegate.alloc().initWithBoard_port_(board, port)

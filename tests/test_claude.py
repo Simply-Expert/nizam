@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 import fixtures as fx
-from nizam import cli, routines, runner, terminal
+from nizam import cli, providers, routines, runner, terminal
 
 SID = "22222222-2222-4222-8222-222222222222"
 REPO = Path(__file__).resolve().parents[1]
@@ -111,6 +111,40 @@ class Transcripts(Case):
         entries += [fx.launched({"backgroundTaskId": "late"}, t0 + 400, self.cwd)]
         self.assertEqual(list(self.read(entries).background), ["late"])
 
+
+
+class ConversationTail(Case):
+    def tail(self, entries, chars=5000):
+        fx.write_transcript(self.home, SID, self.cwd, entries)
+        return providers.get().conversation_tail(SID, chars)
+
+    def test_turns_read_in_order_with_what_the_session_asks(self):
+        t0 = self.now - 100
+        ask = fx.assistant("Two ways to do this.", t0 + 2, self.cwd)
+        ask["message"]["content"].append({"type": "tool_use", "name": "AskUserQuestion",
+                                          "input": {"questions": [{"question": "Rebase or merge?"}]}})
+        out = self.tail([fx.user("Ship the fix", t0, self.cwd),
+                         fx.user([{"type": "tool_result", "content": "noise"}], t0 + 1, self.cwd),
+                         ask])
+        self.assertTrue(out.startswith("PERSON:\nShip the fix\n\nCLAUDE:\nTwo ways to do this."))
+        self.assertIn("Rebase or merge?", out)
+        self.assertNotIn("noise", out)
+
+    def test_side_chains_and_system_noise_are_left_out(self):
+        t0 = self.now - 100
+        out = self.tail([fx.user("<command-name>/clear</command-name>", t0, self.cwd),
+                         fx.assistant("subagent chatter", t0 + 1, self.cwd, isSidechain=True),
+                         fx.assistant("Done.", t0 + 2, self.cwd)])
+        self.assertEqual(out, "CLAUDE:\nDone.")
+
+    def test_only_the_newest_text_fits(self):
+        t0 = self.now - 100
+        out = self.tail([fx.user("old " * 500, t0, self.cwd), fx.assistant("newest", t0 + 1, self.cwd)], chars=30)
+        self.assertLessEqual(len(out), 30 + 2)
+        self.assertTrue(out.endswith("CLAUDE:\nnewest"))
+
+    def test_an_unsafe_id_reads_nothing(self):
+        self.assertEqual(providers.get().conversation_tail("../*", 100), "")
 
 class Runtimes(Case):
     def test_status_and_liveness(self):

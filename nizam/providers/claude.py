@@ -74,6 +74,7 @@ ENV_MARKERS = ("AI_AGENT", "ENABLE_CLAUDEAI_MCP_SERVERS")
 QUICK_MODEL = "haiku"
 _RC_SESSION = re.compile(r"https://claude\.ai/code/session_[A-Za-z0-9]+")
 _RC_ENVIRONMENT = re.compile(r"https://claude\.ai/code\?environment=env_[A-Za-z0-9]+")
+_SESSION_ID = re.compile(r"^[0-9a-fA-F-]{8,64}$")
 
 
 def _pid_alive(pid: int) -> bool:
@@ -145,6 +146,63 @@ def _strip_system_noise(text: str) -> str:
     if text.startswith("[Image:") and text.count("\n") == 0:
         return ""
     return text.strip()
+
+
+def _assistant_text(content) -> str:
+    out = []
+    for b in content if isinstance(content, list) else []:
+        if not isinstance(b, dict):
+            continue
+        if b.get("type") == "text" and b.get("text"):
+            out.append(b["text"])
+        elif b.get("type") == "tool_use":
+            name, inp = b.get("name", ""), b.get("input") or {}
+            if name == "AskUserQuestion":
+                out.append("[asks] " + json.dumps(inp.get("questions"), ensure_ascii=False)[:1500])
+            elif name == "ExitPlanMode":
+                out.append("[plan for approval] " + str(inp.get("plan", ""))[:2000])
+            else:
+                out.append(f"[tool {name}]")
+    return "\n".join(out)
+
+
+def conversation_tail(session_id: str, chars: int) -> str:
+    if not _SESSION_ID.match(session_id):
+        return ""
+    path = next(CLAUDE_PROJECTS.glob(f"*/{session_id}.jsonl"), None)
+    try:
+        with open(path or "", "rb") as f:
+            size = f.seek(0, os.SEEK_END)
+            f.seek(max(0, size - TAIL_BYTES))
+            lines = f.read().split(b"\n")[1 if size > TAIL_BYTES else 0:]
+    except OSError:
+        return ""
+    turns: list[tuple[str, list[str]]] = []
+    for raw in lines:
+        try:
+            e = json.loads(raw)
+        except ValueError:
+            continue
+        role = e.get("type") if isinstance(e, dict) else None
+        if role not in ("user", "assistant") or e.get("isSidechain") or e.get("isMeta"):
+            continue
+        content = (e.get("message") or {}).get("content")
+        text = _strip_system_noise(_user_text(content) or "") if role == "user" else _assistant_text(content).strip()
+        if not text:
+            continue
+        if turns and turns[-1][0] == role:
+            turns[-1][1].append(text)
+        else:
+            turns.append((role, [text]))
+    out, used = [], 0
+    for role, parts in reversed(turns):
+        block = ("PERSON" if role == "user" else "CLAUDE") + ":\n" + "\n".join(parts)
+        if used + len(block) > chars:
+            out.append(block[len(block) - (chars - used):])
+            break
+        out.append(block)
+        used += len(block)
+    return "\n\n".join(reversed(out))
 
 
 def _track_task(t: Transcript, r: dict, ts: float) -> None:
@@ -532,6 +590,9 @@ class Claude(Provider):
         # The status is redrawn over and over, so the newest mention of each wins.
         sessions, pages = _RC_SESSION.findall(output), _RC_ENVIRONMENT.findall(output)
         return (sessions[-1] if sessions else None), (pages[-1] if pages else None)
+
+    def conversation_tail(self, session_id: str, chars: int) -> str:
+        return conversation_tail(session_id, chars)
 
     def structured_command(self, exe: str, system_prompt: str, schema: dict) -> list[str]:
         # --bare would be quicker still, but it only signs in with an API key, not a subscription.

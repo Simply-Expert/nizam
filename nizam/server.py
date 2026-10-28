@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import reminders, settings, terminal
+from . import reminders, settings, terminal, triage
 from .agents import display_path, load_agent
 from .paths import PORT_FILE, ensure_dirs
 from .state import LOOKBACK, Board
@@ -89,7 +89,9 @@ class Handler(BaseHTTPRequestHandler):
         if u.path in ("/", "/index.html"):
             return self._file(UI_DIR / "index.html")
         if u.path == "/api/board":
-            return self._json(self.board.snapshot())
+            snap = self.board.snapshot()
+            t = triage.get()
+            return self._json({**snap, "triage": t.view(snap) if t else {"enabled": False}})
         if u.path == "/api/settings":
             return self._json(settings.read(self.board))
         if u.path.startswith("/api/agents/areas"):
@@ -153,6 +155,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "unknown action"}, 400)
             b.invalidate()
             return self._json({"ok": True})
+
+        if parts == ["api", "triage", "apply"]:
+            t = triage.get()
+            if t:
+                t.apply()
+            return self._json({"ok": bool(t)})
 
         if parts == ["api", "start"]:
             cwd = str(body.get("cwd") or "")
@@ -349,7 +357,9 @@ def make_server(board: Board, port: int) -> ThreadingHTTPServer:
 
 def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
     ensure_dirs()
-    httpd = make_server(Board(), port)
+    board = Board()
+    httpd = make_server(board, port)
+    triage.start(board)
     if open_browser:
         threading.Timer(0.5, lambda: subprocess.Popen(["open", f"http://127.0.0.1:{port}/"])).start()
     print(f"nizam: http://127.0.0.1:{port}/", flush=True)
