@@ -2,6 +2,16 @@
 
 The newest release is at the top.
 
+## 0.4.1 · 28 Oct 2026
+
+- **Most overdue first.** The Due list is now one list across all agents, sorted by how late
+  each follow-up is, instead of grouped by agent in no particular order.
+- **See which follow-ups are being worked on.** A follow-up you started a session on, from
+  the board or from Telegram, is dimmed, marked *in session*, and moved to the bottom while
+  that session is open. It stays on the list, and comes back as usual if the session ends
+  with the item still in `FOLLOWUPS.md`. Its page offers *Open its session*. While it is in
+  session it leaves the late counts and does not send a "due" message.
+
 ## 0.4.0 · 28 Oct 2026
 
 - **Check first.** A new board view lists the sessions waiting on you as numbered cards, in
