@@ -562,7 +562,7 @@ class AppDelegate(NSObject):
     vc = objc.ivar()
     board = objc.ivar()
     port = objc.ivar()
-    timer = objc.ivar()
+    snap = objc.ivar()
     monitor = objc.ivar()
     seen_needs = objc.ivar()
     seeded = objc.ivar()
@@ -613,9 +613,7 @@ class AppDelegate(NSObject):
             self, "spaceChanged:", "NSWorkspaceActiveSpaceDidChangeNotification", None)
         NSWorkspace.sharedWorkspace().notificationCenter().addObserver_selector_name_object_(
             self, "didWake:", "NSWorkspaceDidWakeNotification", None)
-        self.refresh_(None)
-        self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
-            REFRESH_SECS, self, "refresh:", None, True)
+        threading.Thread(target=self._build_loop, daemon=True).start()
 
     @objc.python_method
     def _install_edit_menu(self):
@@ -632,15 +630,25 @@ class AppDelegate(NSObject):
         edit_item.setSubmenu_(edit)
         NSApp.setMainMenu_(menubar)
 
-    def refresh_(self, _timer):
-        if QUIT_FLAG.exists():
-            QUIT_FLAG.unlink(missing_ok=True)
-            self.quit_(None)
-            return
-        try:
-            snap = self.board.snapshot()
-        except Exception as e:  # keep the runloop alive no matter what
-            sys.stderr.write(f"refresh failed: {e}\n")
+    @objc.python_method
+    def _build_loop(self):
+        """Off the main thread: a cold build takes seconds and would freeze the menu bar and badge."""
+        while True:
+            if QUIT_FLAG.exists():
+                QUIT_FLAG.unlink(missing_ok=True)
+                self.performSelectorOnMainThread_withObject_waitUntilDone_("quit:", None, False)
+                return
+            try:
+                self.snap = self.board.snapshot()
+            except Exception as e:  # keep the loop alive no matter what
+                sys.stderr.write(f"refresh failed: {e}\n")
+            else:
+                self.performSelectorOnMainThread_withObject_waitUntilDone_("refresh:", None, False)
+            time.sleep(REFRESH_SECS)
+
+    def refresh_(self, _):
+        snap = self.snap
+        if snap is None:
             return
         items = {k: [] for k in SEGMENTS}
         needs_now = needs_you(snap)
@@ -850,11 +858,7 @@ class AppDelegate(NSObject):
 
     def notificationClicked_(self, target):
         if target:
-            try:
-                s = next((s for s in self.board.snapshot()["sessions"] if s["id"] == target), None)
-            except Exception as e:
-                sys.stderr.write(f"notification click failed: {e}\n")
-                s = None
+            s = next((s for s in (self.snap or {}).get("sessions", []) if s["id"] == target), None)
             if s:
                 self._open_session(s)
                 return
@@ -1067,8 +1071,6 @@ class AppDelegate(NSObject):
         threading.Thread(target=work, daemon=True).start()
 
     def quit_(self, _):
-        if self.timer is not None:
-            self.timer.invalidate()
         PID_FILE.unlink(missing_ok=True)
         NSApp.terminate_(None)
 
