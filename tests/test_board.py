@@ -3,6 +3,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import fixtures as fx
 from nizam import reminders, state
@@ -327,6 +328,20 @@ class Events(BoardCase):
         self.chat(); self.live()
         fx.append_event(self.home, "", "Notification", self.now, notification_type="permission_prompt")
         self.assertEqual(self.state_of()[0], "inbox")
+
+
+class Snapshot(BoardCase):
+    def test_a_slow_build_is_logged_with_how_long_it_took(self):
+        self.chat()
+        with mock.patch.object(state, "SLOW_BUILD_SECS", -1), mock.patch.object(state.sys, "stderr") as err:
+            self.board.snapshot()
+        self.assertRegex(err.write.call_args[0][0], r"^board: build took \d+\.\ds\n$")
+
+    def test_a_quick_build_logs_nothing(self):
+        self.chat()
+        with mock.patch.object(state.sys, "stderr") as err:
+            self.board.snapshot()
+        err.write.assert_not_called()
 
 
 if __name__ == "__main__":

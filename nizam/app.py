@@ -1075,7 +1075,32 @@ class AppDelegate(NSObject):
         NSApp.terminate_(None)
 
 
+class _Stamped:
+    """app.log is plain stderr from many threads; stamp each line with when it was written."""
+
+    def __init__(self, out):
+        self.out, self.lock, self.fresh = out, threading.Lock(), True
+
+    def write(self, s: str) -> int:
+        with self.lock:
+            stamp = time.strftime("%Y-%m-%d %H:%M:%S ")
+            parts = []
+            for line in s.splitlines(keepends=True):
+                parts.append(stamp + line if self.fresh else line)
+                self.fresh = line.endswith("\n")
+            self.out.write("".join(parts))
+            self.out.flush()
+        return len(s)
+
+    def flush(self):
+        self.out.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.out, name)
+
+
 def run(port: int) -> int:
+    sys.stdout = sys.stderr = _Stamped(sys.stderr)
     ensure_dirs()
     if app_running():
         sys.stderr.write("Nizam is already running in the menu bar.\n")

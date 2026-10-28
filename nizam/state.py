@@ -14,6 +14,7 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import sys
 import threading
 import time
 from dataclasses import asdict, dataclass, field
@@ -36,6 +37,7 @@ DONE_VISIBLE_FOR = 5 * 86400   # done sessions drop off the board after this
 DONE_MAX = 40
 EVENTS_KEEP = LOOKBACK         # an event outside the transcript window can't change the board
 ROTATE_EVERY = 6 * 3600
+SLOW_BUILD_SECS = 1.0
 
 _QUESTION_PHRASES = ("should i", "want me to", "would you like", "do you want", "let me know",
                      "which would you prefer", "shall i", "ok to proceed", "does that work")
@@ -350,6 +352,9 @@ class Board:
             if self._cache and now - self._cache[0] < max_age:
                 return self._cache[1]
             snap = self._build(now)
+            took = time.time() - now
+            if took > SLOW_BUILD_SECS:
+                sys.stderr.write(f"board: build took {took:.1f}s\n")
             self._cache = (now, snap)
             return snap
 

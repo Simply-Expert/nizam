@@ -26,6 +26,15 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
+    def handle_one_request(self):
+        start = time.monotonic()
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError):
+            # The caller stopped waiting; a slow board build is the usual reason.
+            sys.stderr.write(f"server: {getattr(self, 'command', '')} {getattr(self, 'path', '')} "
+                             f"gave up waiting after {time.monotonic() - start:.1f}s\n")
+
     def _json(self, obj, status=200):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
