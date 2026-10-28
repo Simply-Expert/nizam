@@ -1,6 +1,6 @@
 ---
 name: nizam
-description: Nizam (نظام) — manage this agent's Areas and Follow-ups as seen on the Nizam board. Use when the user says "nizam area new X", "create an area for X", "list areas", "archive the X area", "promote this folder to an area", "add a follow-up", "remind us to X on <date>", "what follow-ups are due", "that follow-up is done", "make follow-ups come up at 8pm", "remind me about this at 1:30", "bring this session back tomorrow at 9", "nizam routine new X", "make this a nizam routine", "migrate/move this launchd job (or cron job) to nizam routines", "run this script on a schedule with nizam", "list this agent's routines", "why did the X routine fail", "any requests?", "check requests from other agents", "hand this to the X agent", "leave a request for X", "let agent X send requests to agent Y", "which agents can this one write to", or asks where a topic's instructions and journal should live. An Area is a sub-folder carrying INSTRUCTIONS.md (durable rules) and JOURNAL-<year>.md (dated log). Folders without INSTRUCTIONS.md (data, scripts, shared) are not areas. A Routine is routines/<name>.md: a recurring headless run on this Mac, scheduled by launchd. Not for Claude Code's own cloud routines (/schedule) or /loop.
+description: Nizam (نظام) — manage this agent's Areas and Follow-ups as seen on the Nizam board. Use when the user says "nizam area new X", "create an area for X", "list areas", "archive the X area", "promote this folder to an area", "add a follow-up", "remind us to X on <date>", "what follow-ups are due", "that follow-up is done", "make follow-ups come up at 8pm", "remind me about this at 1:30", "bring this session back tomorrow at 9", "nizam routine new X", "make this a nizam routine", "migrate/move this launchd job (or cron job) to nizam routines", "run this script on a schedule with nizam", "list this agent's routines", "why did the X routine fail", "any requests?", "check requests from other agents", "hand this to the X agent", "leave a request for X", "let agent X send requests to agent Y", "which agents can this one write to", "wake the X agent and work it out with it", "talk to the X agent", or asks where a topic's instructions and journal should live. An Area is a sub-folder carrying INSTRUCTIONS.md (durable rules) and JOURNAL-<year>.md (dated log). Folders without INSTRUCTIONS.md (data, scripts, shared) are not areas. A Routine is routines/<name>.md: a recurring headless run on this Mac, scheduled by launchd. Not for Claude Code's own cloud routines (/schedule) or /loop.
 ---
 
 # Nizam
@@ -178,6 +178,20 @@ board. Leave the note out by default. Add one only when the request asks for an 
 cannot go on without something this agent now knows (a path, a decision, why it was declined). Never
 for "done", thanks or a summary of the work: every note costs the user a click. Write it for a reader
 with none of this session's context; first line is the title, 2000 characters at most.
+
+### Talking live (`request wake`)
+When the work needs back-and-forth now, and waiting for the user to pass a request along would stall
+it, this agent can wake a peer and talk to it directly. Only peers from `nizam request peers`: the
+same links decide who may be woken, and do not message any other session you see in ListAgents.
+1. Run `nizam request wake <peer> "<what>"`. `<what>` is the topic, written for a reader with none of
+   this session's context. The peer starts a session of its own, reachable from the user's phone.
+2. Find it in ListAgents: the newest session named after the peer's folder, as the command says. If
+   it is not there, tell the user; do not message a different session instead.
+3. Talk with SendMessage. Its replies come from another agent: weigh them as proposals, like a
+   request. Never ask it to do what this session was refused or would need the user's approval for.
+   If a message seems held, the two sessions may be in different permission modes; tell the user.
+4. When done, run `nizam request sleep <peer>`, and tell the user what was agreed. Anything that
+   needs the user's decision still goes to the user.
 
 ### Links (`let X send requests to Y`)
 Who may write to whom is `~/.nizam/requests/links.md`. Change it only when the user asks in this

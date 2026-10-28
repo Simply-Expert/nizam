@@ -25,6 +25,7 @@ def read(board) -> dict:
                 "notifications": bool(prefs.get("notifications")),
                 "launcher": prefs.get("launcher", "Terminal"), "launchers": list(terminal.LAUNCHERS),
                 "terminal": terminal.terminal_for(prefs),
+                "remote_control": bool(prefs.get("remote_control", True)),
                 "triage": bool(prefs.get("triage")),
                 "current": info and info.get("current"), "latest": info and info.get("latest")},
         "followups": {"hour": f"{h:02d}:{m:02d}"},
@@ -63,6 +64,10 @@ def apply(board, changes: dict) -> None:
             if v not in terminal.TERMINALS:
                 raise ValueError(f"Unknown terminal: {v}")
             board.persist.set_pref("terminal", v)
+        elif k == "remote_control":
+            if not isinstance(v, bool):
+                raise ValueError("Reachable from your phone is on or off")
+            board.persist.set_pref("remote_control", v)
         elif k == "triage":
             if not isinstance(v, bool):
                 raise ValueError("Check first is on or off")

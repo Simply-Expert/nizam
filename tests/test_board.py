@@ -127,6 +127,14 @@ class WithoutHooks(BoardCase):
         self.live("idle")
         self.assertEqual(self.state_of(), ("inbox", "Turn finished", ""))
 
+    def test_a_remote_controlled_session_carries_its_link_while_live(self):
+        self.chat()
+        fx.write_runtime(self.home, SID, self.cwd, os.getpid(), bridge="session_01X")
+        self.assertEqual(self.row()["remote_url"], "https://claude.ai/code/session_01X")
+        fx.write_runtime(self.home, SID, self.cwd, fx.dead_pid(), bridge="session_01X", updated=self.now)
+        (self.home / ".claude" / "sessions" / f"{os.getpid()}.json").unlink()
+        self.assertIsNone(self.row()["remote_url"])
+
     def test_pending_tool_in_the_transcript(self):
         for tool, label in (("ExitPlanMode", "Plan to review"), ("AskUserQuestion", "Asking you")):
             with self.subTest(tool):

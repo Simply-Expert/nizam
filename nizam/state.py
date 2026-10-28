@@ -320,7 +320,7 @@ def needs_you(snap: dict) -> dict[str, dict]:
     for s in snap["sessions"]:
         if s["bucket"] == "needs":
             out[s["id"]] = {"kind": "session", "agent": s["agent"], "agent_name": s["agent_name"], "label": s["label"],
-                            "title": s["title"], "target": s["id"]}
+                            "title": s["title"], "target": s["id"], "url": s.get("remote_url")}
     for f in snap.get("followups", []):
         # A time on a follow-up asks to be noticed then.
         if f["time"] and f["due"] == "today":
@@ -443,6 +443,7 @@ class Board:
                 "live": live,
                 "pid": rt.pid if rt else None,
                 "runtime_status": rt.status if rt else None,
+                "remote_url": rt.remote_url if live else None,
                 "last_activity": last_activity,
                 "ago": _ago(now - last_activity),
                 "started": t.first_ts or t.mtime,

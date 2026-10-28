@@ -882,6 +882,8 @@ function renderSettings() {
              `<select data-set="launcher">${opts(A.launchers.map(l => [l, LAUNCHER_LABEL[l] || l]), A.launcher)}</select>`)
     + (A.launcher === 'Claude' ? setRow('Everything else opens in', 'Resuming a closed session, new git worktrees, and requests from other agents, which start in plan mode.',
              `<select data-set="terminal">${opts(A.launchers.filter(l => l !== 'Claude').map(l => [l, LAUNCHER_LABEL[l] || l]), A.terminal)}</select>`) : '')
+    + setRow('Reachable from your phone', 'Sessions Nizam starts or resumes in a terminal can be opened in the Claude app on your phone, and Telegram links to the ones that need you. Needs a claude.ai sign-in.',
+             sw('data-set="remote_control"', A.remote_control))
     + setRow('Check first', 'Claude reads what each waiting session last said and suggests which to answer first. It uses your Claude plan: a quick Haiku call when sessions stop, and a Sonnet call to order them.',
              sw('data-set="triage"', A.triage))
     + setRow('Untimed follow-ups come up at', 'A follow-up with a time of its own comes up then instead.',
@@ -1035,7 +1037,7 @@ function startPayload() {
 function updateCmd() {
   if (!DATA) return;
   const p = startPayload();
-  let c = `cd ${p.cwd.replace(/^\/Users\/[^/]+/, '~')} && claude --session-id <new>` + (p.permission_mode !== 'default' ? ` --permission-mode ${p.permission_mode}` : '') + (p.prompt.trim() ? ` '${p.prompt.trim().slice(0,60)}${p.prompt.trim().length>60?'…':''}'` : '');
+  let c = `cd ${p.cwd.replace(/^\/Users\/[^/]+/, '~')} && claude${DATA.prefs.remote_control === false ? '' : ' --remote-control'} --session-id <new>` + (p.permission_mode !== 'default' ? ` --permission-mode ${p.permission_mode}` : '') + (p.prompt.trim() ? ` '${p.prompt.trim().slice(0,60)}${p.prompt.trim().length>60?'…':''}'` : '');
   if (p.worktree) c = '(git worktree add …) && ' + c;
   const app = $('#mLauncher').value === 'Claude' && !p.worktree;
   if (app) c = `The Claude app opens a new session in ${p.cwd.replace(/^\/Users\/[^/]+/, '~')}` + (p.prompt.trim() ? ', with the task typed in for you to send.' : '.');

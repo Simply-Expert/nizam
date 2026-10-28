@@ -133,7 +133,8 @@ last message was wrong too often; you are the only one who knows a task is over.
 - **Settings**: the ⚙ next to the Nizam name (or *Settings…* in the right-click menu, or ⌘,) shows
   every setting in one place and lets you change it: Mac and Telegram notifications, connecting and
   pairing the Telegram bot, phone sessions, when untimed follow-ups come up, start at login, the
-  floating badge, which terminal new sessions open in, and updates.
+  floating badge, which terminal new sessions open in, whether they can be reached from your phone,
+  and updates.
 - **Jump to** focuses the live session's tab (Terminal.app, iTerm, Ghostty 1.3+). **Resume** reopens
   an exited one with `claude --resume`. **New here** starts a session in that agent and area with
   your last-used settings; ⌥-click for the full dialog (prompt, permission mode, git worktree,
@@ -222,6 +223,11 @@ shows it in full and lets you edit it before starting; the session starts in pla
 is handed over as a quoted request to weigh, not as your instruction. Routines cannot send requests, a
 session started from a request cannot send one on, and a request nobody touches expires after 14 days.
 
+When two agents need to work something out now, one can wake the other instead
+(`nizam request wake <peer> "<topic>"`) and talk to it through Claude Code's own messages between
+sessions. The same links decide who may be woken. The woken agent's session is reachable from the
+Claude app, so you can watch or step in, and `nizam request sleep <peer>` ends it.
+
 A folder becomes visible on the board the moment it gets an `INSTRUCTIONS.md`.
 
 ## Routines
@@ -296,7 +302,11 @@ bot:   Marketing is awake. Open it in the Claude app.   [Open session] [New sess
 The bot understands `/wake`, `/sleep`, `/agents`, `/status`, `/followups` and `/notify`. `/wake` and `/sleep` without a name show
 one button per agent. `/followups` numbers the ones due now, with a button each. Tapping one starts
 a session in that follow-up's folder, the way *Start session* does on the board, and the session is
-already working on the follow-up when you open it in the app. Anything else you write, such as *"wake the one that does invoices"*, goes through
+already working on the follow-up when you open it in the app. When new sessions open in Terminal or
+Ghostty, that is where it starts, so it is waiting in a window when you are back at the Mac; with the
+Claude app chosen, it runs in the background. `/followups` also lists the open requests agents left
+each other, and replies to them; tapping one starts the agent it is for in plan mode, as *Start* does
+on the board. Anything else you write, such as *"wake the one that does invoices"*, goes through
 one quick headless Claude call (Haiku, no tools, nothing saved). That call can only pick one of those
 four actions and one of your agents; the bot then runs it.
 
@@ -326,14 +336,19 @@ While an agent is awake:
   A session that is working or waiting on you keeps it awake.
 - its server outlives a restart or update of Nizam, which finds it again afterwards.
 
-Sessions start in `acceptEdits` mode. Settings, under *Phone*, changes that and the idle time; so do
+Sessions Nizam starts or resumes in a terminal have Remote Control on too (`claude --remote-control`),
+so you can pick any of them up in the Claude app. *Reachable from your phone* in Settings turns this
+off. It needs a claude.ai sign-in, and without one Nizam leaves the flag out.
+
+Sessions started from the phone start in `acceptEdits` mode. Settings, under *Phone*, changes that and the idle time; so do
 `permission_mode` (`default`, `acceptEdits`, `plan`, `auto`) and `idle_hours` (`0` for never) in
 `~/.nizam/telegram.json`.
 The bot can also message you first. `/notify on` (or `nizam telegram notify on`) sends you what newly
 needs you: a blocked session, a routine that failed or found something, a follow-up due at its time.
 It waits until the Mac has gone untouched for 5 minutes, so you don't get a buzz on your phone for
 what is already on your screen; anything still waiting once you walk away is sent then. Each thing is
-sent once. A follow-up or routine finding comes with a button to wake its agent. `/notify always`
+sent once. A blocked session that has Remote Control on comes with a button that opens it in the
+Claude app; a follow-up or routine finding comes with a button to wake its agent. `/notify always`
 sends straight away, `/notify off` stops it, and Settings (or `away_minutes` in
 `~/.nizam/telegram.json`) changes the wait.
 
@@ -358,6 +373,7 @@ nizam request peers   the agents this one may write to
 nizam request send <peer> <what>   leave a request; the user decides when it is seen
 nizam request list    requests waiting for this agent, and what it sent
 nizam request done <id> [note]   close a request; a note, when one is really needed, goes back via the board
+nizam request wake <peer> <what>   wake a peer to talk live; sleep <peer> ends it
 nizam telegram setup <token>   connect the bot @BotFather made
 nizam telegram pair <code>     let the Telegram account that got this code use the bot
 nizam telegram notify on|always|off   message you when something needs you: once you're away, every time, or never

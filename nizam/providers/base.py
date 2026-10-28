@@ -28,6 +28,7 @@ class Runtime:
     name: str | None
     updated_at: float
     started_at: float
+    remote_url: str | None = None   # where the phone opens it, while remote control is on
 
     @property
     def alive(self) -> bool:
@@ -118,12 +119,18 @@ class Provider:
         """One line of events.jsonl, as this tool's hook wrote it."""
         return Signal(ACTIVITY)
 
-    def start_command(self, session_id: str | None, prompt: str, permission_mode: str) -> str:
-        """Shell command for a new interactive session; it carries session_id when one is given."""
+    def start_command(self, session_id: str | None, prompt: str, permission_mode: str,
+                      remote: str | None = None) -> str:
+        """Shell command for a new interactive session; it carries session_id when one is given.
+        With remote (a name, or "" for the tool's own) the phone can reach it, where the tool allows."""
         raise NotImplementedError
 
-    def resume_command(self, session_id: str) -> str:
+    def resume_command(self, session_id: str, remote: str | None = None) -> str:
         raise NotImplementedError
+
+    def remote_ready(self) -> bool:
+        """Whether sessions of this tool can be reached from the phone on this Mac."""
+        return False
 
     def desktop_url(self, session_id: str) -> str | None:
         """Deep link that opens this session in desktop_app, if the app holds it."""

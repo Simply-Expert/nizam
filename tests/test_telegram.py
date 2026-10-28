@@ -5,6 +5,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import fixtures  # noqa: F401  (puts the repo on sys.path)
@@ -16,11 +17,12 @@ ME, STRANGER = 111, 999
 
 class FakeBoard:
     def __init__(self, agents, sessions=()):
-        self.agents, self.sessions, self.followups, self.invalidated = agents, list(sessions), [], 0
+        self.agents, self.sessions, self.followups, self.requests, self.invalidated = agents, list(sessions), [], [], 0
+        self.persist = SimpleNamespace(data={"prefs": {}})
 
     def snapshot(self):
         return {"agents": self.agents, "sessions": self.sessions, "routines": [], "followups": self.followups,
-                "agent_order": []}
+                "requests": self.requests, "agent_order": []}
 
     def invalidate(self):
         self.invalidated += 1
@@ -71,12 +73,13 @@ class Bot(unittest.TestCase):
                         mock.patch.object(T, "_path", lambda: str(Path(sys.executable).parent)),
                         mock.patch.object(T, "load_links", lambda: mock.Mock(agents={})),
                         mock.patch.object(T.remote, "wake", self.fake_wake),
+                        mock.patch.object(T.remote, "start_in_terminal", self.fake_start_in_terminal),
                         mock.patch.object(T.remote, "stop", self.fake_stop),
                         mock.patch.object(T.remote, "trim", lambda: None),
                         mock.patch.object(T.remote, "awake", lambda: self.awake)]
         for p in self.patches:
             p.start()
-        self.woken, self.stopped, self.awake = [], [], {}
+        self.woken, self.stopped, self.awake, self.in_terminal = [], [], {}, []
         T.save_config({"token": "TOKEN", "bot": "nizam_bot", "users": [ME]})
         self.board = FakeBoard([agent("/w/marketing", "Marketing"), agent("/w/finance", "Finance"),
                                 agent("/w/fin-ops", "Fin Ops")])
@@ -94,6 +97,10 @@ class Bot(unittest.TestCase):
                     "session_url": "https://claude.ai/code/session_T", "page_url": None}
         return {"root": str(root), "name": name, "started": time.time(),
                 "session_url": "https://claude.ai/code/session_X", "page_url": "https://claude.ai/code?environment=env_Y"}
+
+    def fake_start_in_terminal(self, root, name, mode, provider=None, **task):
+        self.in_terminal.append((str(root), name, mode, task))
+        return {"root": str(root), "name": name, "started": time.time(), "session_url": "https://claude.ai/code/session_G"}
 
     def fake_stop(self, root):
         self.stopped.append(str(root))
@@ -220,9 +227,10 @@ class Bot(unittest.TestCase):
         self.assertEqual(self.tg.texts()[-1], "Follow-ups for Finance\n\nDue now (1)\n1. Pay VAT, today"
                                               "\n\nTap one to start its agent on it.")
         self.message("/followups fin ops")
-        self.assertEqual(self.tg.texts()[-1], "No follow-ups for Fin Ops in the next 7 days.")
+        self.assertEqual(self.tg.texts()[-1], "No follow-ups for Fin Ops in the next 7 days, and no requests.")
 
     def test_a_followup_button_starts_its_agent_on_it(self):
+        self.board.persist.data["prefs"]["launcher"] = "Claude"
         self.board.followups = [self.followup("a1", "/w/marketing", "Send the draft", "overdue", -2, "2d late",
                                               area="newsletter")]
         self.press("f:a1")
@@ -243,6 +251,67 @@ class Bot(unittest.TestCase):
         self.press("f:a1", user=STRANGER)
         self.assertEqual(len(self.woken), 1)
 
+    def test_a_followup_opens_in_the_terminal_new_sessions_open_in(self):
+        self.board.persist.data["prefs"]["launcher"] = "Ghostty"
+        self.board.followups = [self.followup("a1", "/w/marketing", "Send the draft", "overdue", -2, "2d late",
+                                              area="newsletter")]
+        with mock.patch.object(T, "has_display", lambda: True):
+            self.press("f:a1")
+        self.assertEqual(self.woken, [])
+        root, name, mode, task = self.in_terminal[0]
+        self.assertEqual((root, name, mode, task["launcher"], task["task"], task["cwd"]),
+                         ("/w/marketing", "Marketing", "acceptEdits", "Ghostty", "a1", Path("/w/marketing/newsletter")))
+        edit = self.tg.said("editMessageText")[-1]
+        self.assertEqual(edit["reply_markup"]["inline_keyboard"],
+                         [[{"text": "Open session", "url": "https://claude.ai/code/session_G"}]])
+
+    def test_a_followup_runs_in_the_background_while_the_lid_is_shut(self):
+        self.board.persist.data["prefs"]["launcher"] = "Ghostty"
+        self.board.followups = [self.followup("a1", "/w/marketing", "Send the draft", "overdue", -2, "2d late")]
+        with mock.patch.object(T, "has_display", lambda: False):
+            self.press("f:a1")
+        self.assertEqual(self.in_terminal, [])
+        self.assertEqual(self.woken[0][3]["task"], "a1")
+
+    def request(self, rid, root, frm, title, kind="request", status="sent"):
+        return {"id": f"q:{rid}" + (":reply" if kind == "reply" else ""), "rid": rid, "kind": kind, "agent": root,
+                "cwd": root, "from": frm, "title": title, "body": title, "status": status, "ago": "2h"}
+
+    def test_requests_are_listed_with_the_followups(self):
+        self.board.followups = [self.followup("a1", "/w/marketing", "Send the draft", "overdue", -2, "2d late")]
+        self.board.requests = [self.request("r1", "/w/finance", "marketing", "Need the Q3 numbers"),
+                               self.request("r2", "/w/marketing", "finance", "Numbers attached", kind="reply")]
+        self.message("/followups")
+        sent = self.tg.said("sendMessage")[-1]
+        self.assertEqual(sent["text"], "Follow-ups\n\nDue now (1)\n1. Marketing: Send the draft, 2d late"
+                                       "\n\nRequests (2)\n2. Finance: from marketing: Need the Q3 numbers, 2h ago"
+                                       "\n3. Marketing: reply from finance: Numbers attached, 2h ago"
+                                       "\n\nTap one to start its agent on it.")
+        self.assertEqual(sent["reply_markup"]["inline_keyboard"],
+                         [[{"text": "1. Send the draft", "callback_data": "f:a1"}],
+                          [{"text": "2. Need the Q3 numbers", "callback_data": "q:r1"}],
+                          [{"text": "3. Numbers attached", "callback_data": "q:r2:reply"}]])
+        self.board.followups = []
+        self.message("/requests finance")
+        self.assertEqual(self.tg.texts()[-1], "Follow-ups for Finance\n\nRequests (1)\n1. from marketing: "
+                                              "Need the Q3 numbers, 2h ago\n\nTap one to start its agent on it.")
+
+    def test_a_request_button_starts_its_agent_in_plan_mode(self):
+        self.board.persist.data["prefs"]["launcher"] = "Claude"
+        self.board.requests = [self.request("r1", "/w/finance", "marketing", "Need the Q3 numbers")]
+        record = {"id": "r1", "from": "marketing", "to": "finance", "body": "Need the Q3 numbers", "sent_at": 0}
+        with mock.patch.object(T.requests_mod, "index", lambda: {"r1": record}), \
+             mock.patch.object(T.requests_mod, "set_status") as set_status:
+            self.press("q:r1")
+        root, name, mode, task = self.woken[0]
+        self.assertEqual((root, name, mode, task["task"]), ("/w/finance", "Finance", "plan", "r1"))
+        self.assertIn("<request from=\"marketing\"", task["prompt"])
+        set_status.assert_called_once_with("r1", "started", by="user")
+        self.board.requests = []
+        self.press("q:r1")
+        self.assertEqual(len(self.woken), 1)
+        self.assertIn("no longer open", self.tg.texts()[-1])
+
     def test_pairing(self):
         T.save_config({"token": "TOKEN", "bot": "nizam_bot"})
         self.message("hello", user=STRANGER)
@@ -259,9 +328,10 @@ class Bot(unittest.TestCase):
         self.message("hello", user=ME)
         self.assertNotIn("nizam telegram pair", self.tg.texts()[-1])
 
-    def blocked(self, sid, title):
+    def blocked(self, sid, title, url=None):
         return {"id": sid, "agent": "/w/marketing", "agent_name": "Marketing", "bucket": "needs",
-                "label": "Permission needed", "title": title, "live": True, "last_activity": time.time()}
+                "label": "Permission needed", "title": title, "live": True, "last_activity": time.time(),
+                "remote_url": url}
 
     def test_tells_what_newly_needs_you_once(self):
         self.board.sessions = [self.blocked("s1", "Old")]
@@ -277,6 +347,19 @@ class Bot(unittest.TestCase):
         self.bot.tell(idle=0)
         self.assertEqual(self.tg.texts(), ["Marketing needs you\nPermission needed: Ship it"])
         self.assertNotIn("reply_markup", self.tg.said("sendMessage")[-1])
+
+    def test_a_blocked_session_the_phone_can_reach_comes_with_its_link(self):
+        T.configure(notify="always")
+        self.bot.tell(idle=0)
+        self.board.sessions = [self.blocked("s1", "Ship it", "https://claude.ai/code/session_A")]
+        self.bot.tell(idle=0)
+        self.assertEqual(self.tg.said("sendMessage")[-1]["reply_markup"]["inline_keyboard"],
+                         [[{"text": "Open session", "url": "https://claude.ai/code/session_A"}]])
+        self.board.sessions += [self.blocked("s2", "Fix the banner", "https://claude.ai/code/session_B"),
+                                self.blocked("s3", "At the Mac only")]
+        self.bot.tell(idle=0)
+        self.assertEqual(self.tg.said("sendMessage")[-1]["reply_markup"]["inline_keyboard"],
+                         [[{"text": "Open “Fix the banner”", "url": "https://claude.ai/code/session_B"}]])
 
     def test_away_waits_until_the_mac_is_untouched(self):
         T.configure(notify="away")

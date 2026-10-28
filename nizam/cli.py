@@ -248,12 +248,16 @@ def telegram_cmd(action: str, args: list[str]) -> int:
     return 0
 
 
+def _agent_name(root: Path) -> str:
+    from .state import Persisted
+    return Persisted().data.get("agents", {}).get(str(root), {}).get("name") or root.name
+
+
 def wake_cmd(where: str, stop: bool) -> int:
     from . import remote, telegram
     from .agents import find_agent_root
-    from .state import Persisted
     root = find_agent_root(Path(where).resolve())
-    name = Persisted().data.get("agents", {}).get(str(root), {}).get("name") or root.name
+    name = _agent_name(root)
     if stop:
         print(f"{name} is asleep" if remote.stop(root) else f"{name} wasn't awake")
         return 0
@@ -308,6 +312,35 @@ def request_cmd(action: str, args: list[str]) -> int:
             ev = requests.send(here, args[0], body)
             print(f"queued as {ev['id']} for '{ev['to']}'. It is not delivered yet: the user decides "
                   "whether and when that agent sees it. Tell the user you left it.")
+        elif action == "wake":
+            if len(args) < 2:
+                print("usage: nizam request wake <peer> <what to talk about>  (use - to read it from stdin)", file=sys.stderr)
+                return 2
+            from . import remote, telegram
+            me, peer = requests.talk_peer(here, args[0])
+            body = requests.clean(sys.stdin.read() if args[1:] == ["-"] else " ".join(args[1:]))
+            if not body:
+                raise requests.Refused("say what you want to talk about")
+            try:
+                rec = remote.wake(peer.root, _agent_name(peer.root),
+                                  telegram.load_config().get("permission_mode", telegram.DEFAULT_PERMISSION_MODE),
+                                  task=f"talk-{me}", prompt=requests.talk_prompt(me, body), title=f"talk with {me}")
+            except remote.WakeError as e:
+                print(f"could not wake '{peer.handle}': {e}", file=sys.stderr)
+                return 1
+            print(f"'{peer.handle}' " + ("was already awake for a talk with this agent; it did not get this topic, "
+                                         "so start your message with it." if rec.get("already") else
+                                         "is awake and expects a message from you."))
+            print(f"In ListAgents it is the newest session named after its folder ({peer.root.name.lower()}-…). "
+                  f"Talk to it with SendMessage. When you are done: nizam request sleep {peer.handle}")
+        elif action == "sleep":
+            if not args:
+                print("usage: nizam request sleep <peer>", file=sys.stderr)
+                return 2
+            from . import remote
+            me, peer = requests.talk_peer(here, args[0])
+            stopped = remote.stop_task(peer.root, f"talk-{me}")
+            print(f"'{peer.handle}' is back asleep" if stopped else f"no talk with '{peer.handle}' was running")
         elif action == "list":
             waiting = requests.open_for(root)
             print(f"{len(waiting)} request(s) waiting for this agent" + (":" if waiting else ""))
@@ -424,8 +457,9 @@ def main(argv: list[str] | None = None) -> int:
     rt = sub.add_parser("routines", help="list this agent's routines, or sync their schedules into launchd")
     rt.add_argument("action", choices=("list", "sync"))
     rt.add_argument("path", nargs="?", default=".", help="a folder inside the agent (default: here)")
-    rq = sub.add_parser("request", help="handoffs between agents: peers | send <peer> <what> | list | done <id> [note]")
-    rq.add_argument("action", choices=("peers", "send", "list", "done"))
+    rq = sub.add_parser("request", help="handoffs between agents: peers | send <peer> <what> | list | done <id> [note]"
+                                        " | wake <peer> <what> | sleep <peer>")
+    rq.add_argument("action", choices=("peers", "send", "list", "done", "wake", "sleep"))
     rq.add_argument("args", nargs="*")
     rm = sub.add_parser("remind", help="bring this session back to you at a time: <when> | off | (no argument: show)")
     rm.add_argument("when", nargs="*", help="1:30pm, 14:00, +45m, in 2h, tomorrow 9am, fri 10:00, or off")

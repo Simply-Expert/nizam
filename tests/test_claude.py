@@ -166,6 +166,14 @@ class Runtimes(Case):
         self.assertEqual(list(rts), ["dup"])
         self.assertEqual(rts["dup"].pid, os.getpid())
 
+    def test_a_remote_controlled_session_has_its_phone_link(self):
+        fx.write_runtime(self.home, "rc", self.cwd, os.getpid(), bridge="session_01GRe5T6Akmx")
+        fx.write_runtime(self.home, "odd", self.cwd, os.getppid(), bridge="session_01/../evil")
+        fx.write_runtime(self.home, "plain", self.cwd, fx.dead_pid())
+        rts = fx.read_runtimes()
+        self.assertEqual(rts["rc"].remote_url, "https://claude.ai/code/session_01GRe5T6Akmx")
+        self.assertEqual((rts["odd"].remote_url, rts["plain"].remote_url), (None, None))
+
 
 class Hooks(Case):
     def settings(self):
@@ -346,6 +354,30 @@ class Launch(unittest.TestCase):
         self.assertTrue(terminal.resume(SID, "/w/my agent"))
         self.run.assert_called_once_with(f"cd '/w/my agent' && claude --resume {SID}", False, "Terminal", "/w/my agent")
         self.assertFalse(terminal.resume("x; rm -rf ~", "/w"))
+
+    def test_remote_control_goes_first_and_needs_a_claude_ai_sign_in(self):
+        from nizam.providers import claude
+        cfg = Path(tempfile.mkdtemp()) / ".claude.json"
+        with mock.patch.object(claude, "CLAUDE_JSON", cfg):
+            sid = terminal.start("/w", "hi", permission_mode="default", remote="Ops: Pay VAT")
+            self.assertEqual(self.run.call_args.args[0], f"cd /w && claude --session-id {sid} hi")
+            cfg.write_text(json.dumps({"oauthAccount": {"accountUuid": "u1"}}))
+            sid = terminal.start("/w", "hi", permission_mode="default", remote="Ops: Pay VAT")
+            self.assertEqual(self.run.call_args.args[0],
+                             f"cd /w && claude --remote-control 'Ops: Pay VAT' --session-id {sid} hi")
+            sid = terminal.start("/w", "hi", permission_mode="default", remote="")
+            self.assertEqual(self.run.call_args.args[0], f"cd /w && claude --remote-control --session-id {sid} hi")
+            terminal.resume(SID, "/w", remote="")
+            self.assertEqual(self.run.call_args.args[0], f"cd /w && claude --remote-control --resume {SID}")
+
+    def test_a_live_session_no_terminal_shows_opens_on_claude_ai(self):
+        s = {"id": SID, "live": True, "pid": os.getpid(), "cwd": "/w", "title": "t", "provider": "claude",
+             "remote_url": "https://claude.ai/code/session_X"}
+        with mock.patch.object(terminal, "focus", lambda *a, **k: False), \
+             mock.patch.object(terminal.subprocess, "Popen") as popen:
+            self.assertTrue(terminal.open_session(s))
+        self.assertEqual(popen.call_args.args[0], ["open", "https://claude.ai/code/session_X"])
+        self.run.assert_not_called()
 
     def test_desktop_session_opens_by_the_apps_own_id(self):
         from nizam.providers import claude

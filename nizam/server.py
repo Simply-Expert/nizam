@@ -115,8 +115,9 @@ class Handler(BaseHTTPRequestHandler):
         parts = [p for p in u.path.split("/") if p]
         body = self._body()
         b = self.board
-        launcher = b.persist.data["prefs"].get("launcher", "Terminal")
-        term = terminal.terminal_for(b.persist.data["prefs"])
+        prefs = b.persist.data["prefs"]
+        launcher = prefs.get("launcher", "Terminal")
+        term = terminal.terminal_for(prefs)
 
         if parts[:2] == ["api", "sessions"] and len(parts) == 4:
             sid, action = parts[2], parts[3]
@@ -146,7 +147,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True, "at": at, "label": at and reminders.label(at, now),
                                    "spoken": at and reminders.spoken(at, now)})
             elif action == "open":
-                ok = terminal.open_session(s, term, bool(body.get("paste")))
+                ok = terminal.open_session(s, term, bool(body.get("paste")), terminal.remote_for(prefs))
                 if ok and s["remind_due"]:
                     b.persist.remind(sid, None)
                 b.invalidate()
@@ -171,7 +172,8 @@ class Handler(BaseHTTPRequestHandler):
             sid = terminal.start(cwd, prompt=str(body.get("prompt") or ""),
                                  permission_mode=str(body.get("permission_mode") or "acceptEdits"),
                                  worktree=bool(body.get("worktree")), paste_only=bool(body.get("paste")),
-                                 launcher=term if body.get("worktree") else launcher)
+                                 launcher=term if body.get("worktree") else launcher,
+                                 remote=terminal.remote_for(prefs, str(body.get("title") or "")))
             b.persist.set_pref("last_start", {"cwd": cwd, "permission_mode": body.get("permission_mode"),
                                               "at": time.time()})
             if sid and body.get("title"):
@@ -271,7 +273,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not text:
                     return self._json({"error": "The note is empty; dismiss it instead"}, 400)
                 sid = terminal.start(r["from_root"], prompt=requests.reply_prompt(r, text), permission_mode="plan",
-                                     paste_only=bool(body.get("paste")), launcher=term)
+                                     paste_only=bool(body.get("paste")), launcher=term,
+                                     remote=terminal.remote_for(prefs, f"Reply from {r['to']}: {q['title']}"[:90]))
                 requests.set_reply(r["id"], "started", session_id=sid, **({"edited": text} if text != r["note"] else {}))
                 if sid:
                     b.persist.rename(sid, f"Reply from {r['to']}: {q['title']}"[:90])
@@ -289,7 +292,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": "The request is empty; dismiss it instead"}, 400)
                 # Plan mode: another agent wrote this text, so nothing is edited before the user has read the reply.
                 sid = terminal.start(r["to_root"], prompt=requests.launch_prompt(r, text), permission_mode="plan",
-                                     paste_only=bool(body.get("paste")), launcher=term)
+                                     paste_only=bool(body.get("paste")), launcher=term,
+                                     remote=terminal.remote_for(prefs, f"From {r['from']}: {q['title']}"[:90]))
                 requests.set_status(r["id"], "started", by="user", session_id=sid,
                                     **({"edited": text} if text != r["body"] else {}))
                 if sid:

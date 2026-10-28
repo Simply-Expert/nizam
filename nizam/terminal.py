@@ -1,6 +1,7 @@
 """Jump to a session's terminal, resume a dead one, or start a new one."""
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import re
@@ -280,6 +281,21 @@ TERMINALS = ("Terminal", "Ghostty")
 LAUNCHERS = (*TERMINALS, DESKTOP)
 
 
+def has_display() -> bool:
+    """Whether a window can be drawn now; with the lid shut and no screen, a new terminal shows only an error."""
+    try:
+        cg = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+        count = ctypes.c_uint32(0)
+        return cg.CGGetActiveDisplayList(0, None, ctypes.byref(count)) == 0 and count.value > 0
+    except (OSError, AttributeError):
+        return True
+
+
+def remote_for(prefs: dict, name: str = "") -> str | None:
+    """The remote-control name for a session Nizam starts, or None when the phone is not to reach it."""
+    return name if prefs.get("remote_control", True) else None
+
+
 def terminal_for(prefs: dict) -> str:
     """The terminal for what the Claude app cannot take: resuming, worktrees, sessions that must start in plan mode."""
     launcher = prefs.get("launcher", "Terminal")
@@ -303,26 +319,30 @@ def run_in_new_terminal(shell_cmd: str, paste_only: bool = False, launcher: str 
 
 
 def resume(session_id: str, cwd: str, paste_only: bool = False, launcher: str = "Terminal",
-           provider: str | None = None) -> bool:
+           provider: str | None = None, remote: str | None = None) -> bool:
     if not _SAFE_ID.match(session_id):
         return False
-    run_in_new_terminal(f"cd {shlex.quote(cwd)} && {providers.get(provider).resume_command(session_id)}",
+    run_in_new_terminal(f"cd {shlex.quote(cwd)} && {providers.get(provider).resume_command(session_id, remote)}",
                         paste_only, launcher, cwd)
     return True
 
 
-def open_session(s: dict, launcher: str = "Terminal", paste_only: bool = False) -> bool:
+def open_session(s: dict, launcher: str = "Terminal", paste_only: bool = False, remote: str | None = None) -> bool:
     if s["live"] and s["pid"] and focus(s["pid"], s["cwd"], [s.get("auto_title", ""), s["title"]],
                                         s["provider"], s["id"]):
         return True
+    if s["live"] and s.get("remote_url"):
+        # A live session no terminal shows, such as one started for the phone: resuming would run it twice.
+        subprocess.Popen(["open", s["remote_url"]], env=clean_env(), **_DETACHED)
+        return True
     if not s["live"] and open_in_desktop(s["id"], s["provider"]):
         return True
-    return resume(s["id"], s["cwd"], paste_only, launcher, s["provider"])
+    return resume(s["id"], s["cwd"], paste_only, launcher, s["provider"], remote)
 
 
 def start(cwd: str, prompt: str = "", permission_mode: str = "acceptEdits",
           worktree: bool = False, paste_only: bool = False, launcher: str = "Terminal",
-          provider: str | None = None) -> str | None:
+          provider: str | None = None, remote: str | None = None) -> str | None:
     """Start a new session in a new terminal window, or in the Claude app, where the
     prompt waits for the user to send it. Where the CLI takes
     one, the session id is minted here, so the caller knows which
@@ -335,7 +355,7 @@ def start(cwd: str, prompt: str = "", permission_mode: str = "acceptEdits",
             return None
         launcher = "Terminal"
     sid = str(uuid.uuid4()) if p.takes_session_id else None
-    cmd = p.start_command(sid, prompt, permission_mode)
+    cmd = p.start_command(sid, prompt, permission_mode, remote)
     if worktree:
         root = git_root(cwd)
         if root:

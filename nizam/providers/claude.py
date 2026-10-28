@@ -74,6 +74,7 @@ ENV_MARKERS = ("AI_AGENT", "ENABLE_CLAUDEAI_MCP_SERVERS")
 QUICK_MODEL = "haiku"
 _RC_SESSION = re.compile(r"https://claude\.ai/code/session_[A-Za-z0-9]+")
 _RC_ENVIRONMENT = re.compile(r"https://claude\.ai/code\?environment=env_[A-Za-z0-9]+")
+_BRIDGE_ID = re.compile(r"^session_[A-Za-z0-9]+$")
 _SESSION_ID = re.compile(r"^[0-9a-fA-F-]{8,64}$")
 
 
@@ -104,10 +105,13 @@ def read_runtimes() -> dict[str, Runtime]:
             status = d.get("status") or "idle"
             if not _pid_alive(pid):
                 status = "exited"
+            bridge = d.get("bridgeSessionId")
             rt = Runtime(pid=pid, session_id=sid, cwd=d.get("cwd") or "",
                          status=status, name=d.get("name"),
                          updated_at=(d.get("statusUpdatedAt") or d.get("updatedAt") or 0) / 1000,
-                         started_at=(d.get("startedAt") or 0) / 1000)
+                         started_at=(d.get("startedAt") or 0) / 1000,
+                         remote_url=(f"https://claude.ai/code/{bridge}"
+                                     if isinstance(bridge, str) and _BRIDGE_ID.match(bridge) else None))
             prev = out.get(sid)
             if prev is None or rt.updated_at > prev.updated_at:
                 out[sid] = rt
@@ -505,16 +509,30 @@ class Claude(Provider):
             return Signal(NEEDS, NEEDS_EVENTS[key], event.get("question") or event.get("message") or "")
         return Signal(EVENT_KINDS.get(name or "", ACTIVITY))
 
-    def start_command(self, session_id: str, prompt: str, permission_mode: str) -> str:
-        cmd = f"claude --session-id {session_id}"
+    def start_command(self, session_id: str, prompt: str, permission_mode: str, remote: str | None = None) -> str:
+        cmd = f"claude{self._remote(remote)} --session-id {session_id}"
         if permission_mode in self.permission_modes and permission_mode != "default":
             cmd += f" --permission-mode {permission_mode}"
         if prompt.strip():
             cmd += " " + shlex.quote(prompt.strip())
         return cmd
 
-    def resume_command(self, session_id: str) -> str:
-        return f"claude --resume {shlex.quote(session_id)}"
+    def resume_command(self, session_id: str, remote: str | None = None) -> str:
+        return f"claude{self._remote(remote)} --resume {shlex.quote(session_id)}"
+
+    def _remote(self, name: str | None) -> str:
+        # Its name is optional, so the flag goes first: what follows a bare one must be another flag.
+        if name is None or not self.remote_ready():
+            return ""
+        return " --remote-control" + (" " + shlex.quote(name) if name else "")
+
+    def remote_ready(self) -> bool:
+        # Remote control needs a claude.ai sign-in, which an API key alone is not.
+        try:
+            account = json.loads(CLAUDE_JSON.read_text(encoding="utf-8")).get("oauthAccount")
+        except (OSError, ValueError, AttributeError):
+            return False
+        return isinstance(account, dict) and bool(account.get("accountUuid"))
 
     def desktop_url(self, session_id: str) -> str | None:
         # The app files a session under its own id; the transcript's id is only a field inside.

@@ -827,8 +827,9 @@ class AppDelegate(NSObject):
 
     @objc.python_method
     def _open_session(self, s):
-        launcher = terminal.terminal_for(self.board.persist.data["prefs"])
-        threading.Thread(target=terminal.open_session, args=(s, launcher), daemon=True).start()
+        prefs = self.board.persist.data["prefs"]
+        threading.Thread(target=terminal.open_session, daemon=True,
+                         args=(s, terminal.terminal_for(prefs), False, terminal.remote_for(prefs))).start()
 
     @objc.python_method
     def _notifications_on(self):

@@ -84,12 +84,13 @@ def write_transcript(home: Path, sid: str, cwd: str, entries: list, mtime: float
 
 
 def write_runtime(home: Path, sid: str, cwd: str, pid: int, status: str = "idle", updated: float | None = None,
-                  started: float = 0) -> None:
+                  started: float = 0, bridge: str | None = None) -> None:
     d = home / ".claude" / "sessions"
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{pid}.json").write_text(json.dumps({
         "pid": pid, "sessionId": sid, "cwd": cwd, "status": status, "startedAt": int(started * 1000),
-        "statusUpdatedAt": int((updated or time.time()) * 1000)}), encoding="utf-8")
+        "statusUpdatedAt": int((updated or time.time()) * 1000),
+        **({"bridgeSessionId": bridge} if bridge else {})}), encoding="utf-8")
 
 
 def append_event(home: Path, sid: str, name: str, ts: float, **fields) -> None:

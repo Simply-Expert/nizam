@@ -72,6 +72,15 @@ class Settings(Case):
         S.apply(self.board, {"permission_mode": "default"})
         self.assertEqual(T.load_config(), {"permission_mode": "default"})
 
+    def test_phone_reach_is_on_until_turned_off(self):
+        prefs = self.board.persist.data["prefs"]
+        self.assertTrue(S.read(self.board)["app"]["remote_control"])
+        self.assertEqual(terminal.remote_for(prefs, "Ops"), "Ops")
+        S.apply(self.board, {"remote_control": False})
+        self.assertFalse(S.read(self.board)["app"]["remote_control"])
+        self.assertIsNone(terminal.remote_for(prefs, "Ops"))
+        self.assertRaises(ValueError, S.apply, self.board, {"remote_control": "yes"})
+
     def test_the_claude_app_keeps_the_terminal_it_replaces(self):
         S.apply(self.board, {"launcher": "Ghostty"})
         S.apply(self.board, {"launcher": "Claude"})

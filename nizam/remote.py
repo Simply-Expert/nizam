@@ -4,6 +4,8 @@ The server lets the Claude app on a phone start sessions in the agent's
 folder; a task, such as a follow-up, gets a session of its own that starts
 on its prompt. Each runs in its own process group so it outlives a restart
 of Nizam, and awake.json remembers it so the next Nizam can find and stop it.
+A task can instead open in a window of the person's terminal: an ordinary
+session with remote control on, remembered only so the same task finds it.
 """
 from __future__ import annotations
 
@@ -18,7 +20,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import providers
+from . import providers, terminal
 from .paths import NIZAM_DIR
 from .runner import login_path
 from .terminal import clean_env
@@ -77,7 +79,8 @@ def awake() -> dict[str, dict]:
     """Agent root -> its server's record, or its oldest task session's, for those still running."""
     out: dict[str, dict] = {}
     for key, rec in sorted(_live().items(), key=lambda kv: (kv[0] != kv[1]["root"], kv[1]["started"])):
-        out.setdefault(rec["root"], rec)
+        if rec.get("host") != "terminal":
+            out.setdefault(rec["root"], rec)
     return out
 
 
@@ -106,6 +109,8 @@ def _log_text(log: Path) -> str:
 
 def _relinked(rec: dict) -> dict:
     """rec with the newest links its log shows, saved when they changed."""
+    if not rec.get("log"):
+        return rec
     session, page = providers.get(rec.get("provider")).remote_links(_log_text(Path(rec["log"])))
     new = {**rec, "session_url": session or rec.get("session_url"), "page_url": page or rec.get("page_url")}
     if new != rec:
@@ -185,6 +190,44 @@ def wake(root: Path, name: str, permission_mode: str = "default", provider: str 
         raise WakeError(f"It did not connect within {CONNECT_WAIT}s." + (f"\n{last}" if last else ""))
 
 
+def start_in_terminal(root: Path, name: str, permission_mode: str, provider: str | None = None, *,
+                      task: str, prompt: str, title: str, cwd: Path, launcher: str) -> dict:
+    """Start a task's session in a new window of the launcher, reachable from the phone, and wait until it is.
+
+    Pressing the same task again finds that session while it runs.
+    """
+    key = f"{root}#{task}"
+    with _lock:
+        gate = _waking.setdefault(key, threading.Lock())
+    with gate:
+        rec = _live().get(key)
+        if rec:
+            return {**_relinked(rec), "already": True}
+        if not root.is_dir() or not cwd.is_dir():
+            raise WakeError("That agent's folder is missing.")
+        p = providers.get(provider)
+        if not p.remote_ready():
+            raise WakeError(f"{p.cli} cannot be reached from the phone.")
+        sid = terminal.start(str(cwd), prompt, permission_mode, launcher=launcher, provider=p.name,
+                             remote=f"{name}: {title}")
+        if not sid:
+            raise WakeError(f"{p.cli} cannot be reached from the phone.")
+        deadline = time.time() + CONNECT_WAIT
+        while time.time() < deadline:
+            time.sleep(0.5)
+            rt = p.runtimes().get(sid)
+            if rt and rt.alive and rt.remote_url:
+                # The session id is on its command line, which is what _running() looks for.
+                rec = {"key": key, "root": str(root), "name": name, "pid": rt.pid, "argv": [sid], "host": "terminal",
+                       "provider": p.name, "log": None, "started": time.time(), "session_url": rt.remote_url,
+                       "page_url": None, "task": task, "title": title}
+                _save(rec)
+                if shutil.which("caffeinate"):
+                    subprocess.Popen(["caffeinate", "-i", "-s", "-w", str(rt.pid)], **_DETACHED)
+                return rec
+        raise WakeError(f"It did not connect within {CONNECT_WAIT}s. Its window on this Mac may say why.")
+
+
 def _alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -196,9 +239,14 @@ def _alive(pid: int) -> bool:
 
 
 def stop(root: Path) -> bool:
-    """Stop the agent's server, every session it started and its task sessions; False when none was running."""
-    keys = [k for k, r in _read().items() if r.get("root") == str(root)]
+    """Stop the agent's server, its sessions and task sessions, except those in a terminal window; False when none ran."""
+    keys = [k for k, r in _read().items() if r.get("root") == str(root) and r.get("host") != "terminal"]
     return any([_stop(_forget(k)) for k in keys])
+
+
+def stop_task(root: Path, task: str) -> bool:
+    """Stop one task's session, leaving the agent's server and its other sessions running."""
+    return _stop(_forget(f"{root}#{task}"))
 
 
 def _stop(rec: dict | None) -> bool:
@@ -222,6 +270,8 @@ def _stop(rec: dict | None) -> bool:
 def trim() -> None:
     """Keep each server's newest links, and its log from growing without end."""
     for rec in _live().values():
+        if not rec.get("log"):
+            continue
         log = Path(rec["log"])
         try:
             size = log.stat().st_size

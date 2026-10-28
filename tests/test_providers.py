@@ -44,7 +44,7 @@ class Fake(Provider):
         return {"blocked": Signal(NEEDS, "Approve?", event.get("why", "")),
                 "finished": Signal(TURN_DONE)}.get(event.get("what"), Signal(ACTIVITY))
 
-    def start_command(self, session_id, prompt, permission_mode):
+    def start_command(self, session_id, prompt, permission_mode, remote=None):
         return f"fakecli new {session_id}"
 
     def headless_command(self, exe, session_id, system_prompt, prompt, meta):
@@ -57,7 +57,7 @@ class Fake(Provider):
         final = json.loads(line).get("final")
         return HeadlessResult(text=final) if final else None
 
-    def resume_command(self, session_id):
+    def resume_command(self, session_id, remote=None):
         return f"fakecli continue {session_id}"
 
     def clean_env(self, env):
