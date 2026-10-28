@@ -229,6 +229,22 @@ class Persisted:
             self.data["prefs"][key] = value
             self.save()
 
+    def link_followup(self, fid: str, agent: str, sid: str) -> None:
+        with self.lock:
+            link = self.data.setdefault("followup_sessions", {}).setdefault(fid, {"agent": agent, "sessions": []})
+            link["sessions"].append(sid)
+            self.save()
+
+    def prune_followup_links(self, agents: set[str], current: set[str]) -> None:
+        """Forget links to follow-ups that left the file, or were moved to another date."""
+        with self.lock:
+            links = self.data.get("followup_sessions", {})
+            gone = [fid for fid, l in links.items() if l["agent"] in agents and fid not in current]
+            for fid in gone:
+                del links[fid]
+            if gone:
+                self.save()
+
     def ack_routine(self, routine_id: str, run_id: str) -> None:
         with self.lock:
             self.data.setdefault("routine_acks", {})[routine_id] = run_id
@@ -323,7 +339,7 @@ def needs_you(snap: dict) -> dict[str, dict]:
                             "title": s["title"], "target": s["id"], "url": s.get("remote_url")}
     for f in snap.get("followups", []):
         # A time on a follow-up asks to be noticed then.
-        if f["time"] and f["due"] == "today":
+        if f["time"] and f["due"] == "today" and not f.get("in_session"):
             out[f["id"]] = {"kind": "followup", "agent": f["agent"], "agent_name": names.get(f["agent"], ""),
                             "label": "Follow-up due",
                             "title": f["title"], "target": f["id"]}
@@ -491,6 +507,7 @@ class Board:
             loaded = agents_mod.load_agent(Path(root))
             followups.extend(followups_mod.for_agent(loaded, hour, now))
             routines.extend(routines_mod.board_rows(loaded, acks))
+        self._mark_in_session(followups, sessions, set(agents))
         for a in agents.values():
             o = overrides.get(a["root"], {})
             a["display_name"] = o.get("name") or a["name"]
@@ -502,6 +519,19 @@ class Board:
         return {"generated_at": now, "agents": sorted(agents.values(), key=lambda a: a["display_name"].lower()),
                 "sessions": sessions, "limits": limits, "followups": followups, "routines": routines, "requests": requests, "prefs": self.persist.data["prefs"],
                 "agent_order": self.persist.data.get("agent_order", [])}
+
+    def _mark_in_session(self, followups: list[dict], sessions: list[dict], agents: set[str]) -> None:
+        """Kept on the list rather than hidden: the session may end with the work unfinished."""
+        open_ = {s["id"] for s in sessions if s["live"] and s["bucket"] != "done"}
+        tasks = remote_mod.tasks()
+        links = self.persist.data.get("followup_sessions", {})
+        for f in followups:
+            on = [sid for sid in links.get(f["id"], {}).get("sessions", []) if sid in open_]
+            f["session_id"] = on[-1] if on else None
+            # Started from the phone: remote keeps the task while its session runs.
+            f["in_session"] = bool(on) or f"{f['agent']}#{f['id'][2:]}" in tasks
+        followups.sort(key=lambda f: (f["in_session"], f["at"]))
+        self.persist.prune_followup_links(agents, {f["id"] for f in followups})
 
     @staticmethod
     def _classify(now, t: Transcript, rt: Runtime | None, h: HookState | None, live: bool,

@@ -354,3 +354,60 @@ class Snapshot(BoardCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FollowupsInSession(BoardCase):
+    def setUp(self):
+        super().setUp()
+        self.other = self.home / "work" / "ops"
+        self.other.mkdir()
+        (self.other / "CLAUDE.md").write_text("ops")
+        self.items = {self.cwd: [self.fu("f:fin-today", self.cwd, 0), self.fu("f:fin-late", self.cwd, -1)],
+                      str(self.other): [self.fu("f:ops-late", str(self.other), -7)]}
+        p = mock.patch.object(state.followups_mod, "for_agent",
+                              lambda agent, hour, now: [dict(f) for f in self.items.get(str(agent.root), [])])
+        p.start()
+        self.addCleanup(p.stop)
+        self.chat()
+        self.chat(sid="2" * 8 + SID[8:], cwd=str(self.other))
+
+    def fu(self, fid, agent, days):
+        return {"id": fid, "agent": agent, "at": self.now + days * 86400, "time": None,
+                "due": "overdue" if days < 0 else "today", "title": fid, "days": days}
+
+    def followups(self):
+        return {f["id"]: f for f in self.board._build(self.now)["followups"]}
+
+    def test_due_order_spans_agents(self):
+        self.assertEqual(list(self.followups()), ["f:ops-late", "f:fin-late", "f:fin-today"])
+
+    def test_an_open_session_sinks_it_until_the_session_ends(self):
+        self.board.persist.link_followup("f:ops-late", str(self.other), SID)
+        self.live()
+        fus = self.followups()
+        self.assertEqual(list(fus), ["f:fin-late", "f:fin-today", "f:ops-late"])
+        self.assertEqual((fus["f:ops-late"]["in_session"], fus["f:ops-late"]["session_id"]), (True, SID))
+        fx.write_runtime(self.home, SID, self.cwd, fx.dead_pid(), "idle")
+        fus = self.followups()
+        self.assertEqual((fus["f:ops-late"]["in_session"], fus["f:ops-late"]["session_id"]), (False, None))
+        self.assertEqual(list(fus)[0], "f:ops-late")
+
+    def test_a_task_started_from_the_phone_counts(self):
+        with mock.patch.object(state.remote_mod, "tasks", lambda: {f"{self.cwd}#fin-late"}):
+            fus = self.followups()
+        self.assertTrue(fus["f:fin-late"]["in_session"])
+        self.assertIsNone(fus["f:fin-late"]["session_id"])
+
+    def test_no_message_while_in_session(self):
+        self.items[self.cwd][0]["time"] = "09:00"
+        self.board.persist.link_followup("f:fin-today", self.cwd, SID)
+        self.assertIn("f:fin-today", state.needs_you(self.board._build(self.now)))
+        self.live()
+        self.assertNotIn("f:fin-today", state.needs_you(self.board._build(self.now)))
+
+    def test_the_link_goes_with_the_follow_up(self):
+        self.board.persist.link_followup("f:fin-late", self.cwd, SID)
+        self.board.persist.link_followup("f:elsewhere", str(self.home / "gone"), SID)
+        self.items[self.cwd].pop()
+        self.followups()
+        self.assertEqual(list(self.board.persist.data["followup_sessions"]), ["f:elsewhere"])

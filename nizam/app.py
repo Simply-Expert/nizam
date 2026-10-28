@@ -672,7 +672,7 @@ class AppDelegate(NSObject):
             for b in ("needs", "inbox"):
                 items[b].sort(key=lambda r: rank.get(r["id"], len(rank)))
         for f in snap.get("followups", []):
-            if f["due"] != "upcoming":
+            if f["due"] != "upcoming" and not f.get("in_session"):
                 when = f["when"] if f["due"] == "today" else f"{-f['days']}d overdue"
                 items["due"].append({"id": f["id"], "title": f["title"],
                                      "sub": f"{agent_names.get(f['agent'], '')} · {when}"})

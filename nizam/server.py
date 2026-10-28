@@ -178,6 +178,10 @@ class Handler(BaseHTTPRequestHandler):
                                               "at": time.time()})
             if sid and body.get("title"):
                 b.persist.rename(sid, str(body["title"]))
+            fu = next((f for f in b.snapshot().get("followups", []) if f["id"] == body.get("followup")), None)
+            if sid and fu:
+                b.persist.link_followup(fu["id"], fu["agent"], sid)
+                b.invalidate()
             return self._json({"ok": True, "session_id": sid})
 
         if parts == ["api", "sessions", "done-all"]:

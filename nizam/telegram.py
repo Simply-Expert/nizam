@@ -706,7 +706,7 @@ class Bot:
         by = {b: [s for s in snap["sessions"] if s["bucket"] == b] for b in ("needs", "working", "inbox")}
         failing = [r for r in snap.get("routines") or [] if r.get("failing")]
         noted = [r for r in snap.get("routines") or [] if r.get("attention") and not r.get("failing")]
-        due = [f for f in snap.get("followups") or [] if f.get("due") in ("today", "overdue")]
+        due = [f for f in snap.get("followups") or [] if f.get("due") in ("today", "overdue") and not f.get("in_session")]
         parts = []
         if by["needs"] or failing or noted:
             rows = [f"• {s['agent_name']}: {s['label']}, {s['title'][:60]}" for s in by["needs"][:5]]
@@ -749,7 +749,8 @@ class Bot:
 
         def line(f: dict, mark: str) -> str:
             where = f" [{f['area']}]" if f.get("area") else ""
-            return f"{mark} {who(f)}{f['title'][:80]}{where}, {f['when']}"
+            busy = " (in session)" if f.get("in_session") else ""
+            return f"{mark} {who(f)}{f['title'][:80]}{where}, {f['when']}{busy}"
 
         def ask(q: dict, mark: str) -> str:
             started = " (started)" if q["status"] == "started" and q["kind"] == "request" else ""

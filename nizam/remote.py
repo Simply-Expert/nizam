@@ -84,6 +84,11 @@ def awake() -> dict[str, dict]:
     return out
 
 
+def tasks() -> set[str]:
+    """Keys ("<root>#<task>") of the task sessions still running."""
+    return {k for k, r in _live().items() if r.get("task")}
+
+
 def _save(rec: dict) -> None:
     with _lock:
         d = _read()

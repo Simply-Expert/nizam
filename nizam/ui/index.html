@@ -95,6 +95,7 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .item:hover { background: var(--hover); }
 .item.on { background: var(--accent-bg); }
 .item.done { opacity: .7; }
+.item.fu.busy { opacity: .5; }
 .item.starred { box-shadow: inset 3px 0 0 var(--star); }
 .item.starred .t::before, .detail h1 .star.on::before { content: "★ "; color: var(--star); }
 .detail h1 .star { border: none; padding: 0 6px; font-size: 16px; color: var(--muted); }
@@ -350,7 +351,7 @@ function touchAgos() {
 
 function counts(list) { const c = {needs:0, working:0, inbox:0, closed:0, later:0, done:0}; for (const s of list) c[s.bucket]++; return c; }
 function badges(c, late, reqs) { return `<span class="cnt">${reqs?`<b class="q" title="Requests and replies from other agents">▸${reqs}</b>`:''}${late?`<b class="f" title="Follow-ups overdue or due today">◆${late}</b>`:''}${c.needs?`<b class="n">${c.needs}</b>`:''}${c.working?`<b class="w">${c.working}</b>`:''}${c.inbox?`<b class="i">${c.inbox}</b>`:''}</span>`; }
-function lateCount(root) { return (DATA.followups || []).filter(f => (!root || f.agent === root) && f.due !== 'upcoming').length; }
+function lateCount(root) { return (DATA.followups || []).filter(f => (!root || f.agent === root) && f.due !== 'upcoming' && !f.in_session).length; }
 function requestCount(root) { return (DATA.requests || []).filter(q => !root || q.agent === root).length; }
 function rtNeeds(r) { return r.failing || !!r.attention; }
 function failingCount(root) { return (DATA.routines || []).filter(r => (!root || r.agent === root) && rtNeeds(r)).length; }
@@ -500,7 +501,7 @@ function followupsFor(agentRoot, areaRel) {
 function followupRow(f, showAgent) {
   const a = agentOf(f.agent);
   const where = (showAgent && a ? esc(a.display_name) : '') + (f.area ? (showAgent ? ' › ' : '') + esc(f.area) : '');
-  return `<div class="item fu ${f.due} ${CUR===f.id?'on':''}" data-id="${f.id}"><span class="dot fu ${f.due}">◆</span><span class="t">${esc(f.title)}</span><span class="ago due ${f.due}">${esc(f.when)}</span>${where?`<span class="where">${where}</span>`:''}<span class="p">${esc((f.body || '').split('\n')[0])}</span></div>`;
+  return `<div class="item fu ${f.due} ${f.in_session?'busy':''} ${CUR===f.id?'on':''}" data-id="${f.id}" ${f.in_session?'title="A session is open on this; it comes back if that session ends with the item still in the file"':''}><span class="dot fu ${f.due}">◆</span><span class="t">${esc(f.title)}</span><span class="ago due ${f.due}">${f.in_session ? 'in session · ' : ''}${esc(f.when)}</span>${where?`<span class="where">${where}</span>`:''}<span class="p">${esc((f.body || '').split('\n')[0])}</span></div>`;
 }
 function requestRow(q, showAgent) {
   const a = agentOf(q.agent);
@@ -599,7 +600,7 @@ function renderList() {
   const shown = s => !folded.includes(s.bucket) || s.id === CUR;
   const fuHtml = () => {
     if (!fus.length) return '';
-    const late = fus.filter(f => f.due === 'overdue').length;
+    const late = fus.filter(f => f.due === 'overdue' && !f.in_session).length;
     fus.forEach(f => NAV.push(f.id));
     return section('fu', SEL.agent ? 'Follow-ups' : 'Due', fus.length + (late && SEL.agent ? ` · ${late} late` : '')) + fus.map(f => followupRow(f, !SEL.agent)).join('');
   };
@@ -658,17 +659,21 @@ function renderFollowup(d, f) {
   d.innerHTML = `
     <button class="back quiet" id="back">‹ Back</button>
     <h1>${esc(f.title)}</h1>
-    <div class="meta"><b>${esc(a ? a.display_name : '')}</b>${f.area?` › ${esc(f.area)}`:''} · follow-up · due ${esc(f.date)}${f.time?' '+esc(f.time):''} <span class="tag due ${f.due}">${esc(f.when)}</span></div>
-    <div class="actions"><button class="primary" id="fuStart" title="Open a session here with this follow-up as the first prompt">Start session</button></div>
+    <div class="meta"><b>${esc(a ? a.display_name : '')}</b>${f.area?` › ${esc(f.area)}`:''} · follow-up · due ${esc(f.date)}${f.time?' '+esc(f.time):''} <span class="tag due ${f.due}">${esc(f.when)}</span>${f.in_session ? ' · in session' : ''}</div>
+    <div class="actions">
+      ${f.session_id ? `<button class="primary" id="fuOpen">Open its session</button>` : ''}
+      <button ${f.session_id ? '' : 'class="primary"'} id="fuStart" title="Open a session here with this follow-up as the first prompt">${f.in_session ? 'Start another session' : 'Start session'}</button>
+    </div>
     <div class="msg">${esc(f.body || '(no details)')}</div>
     <div class="path">${esc(f.file)} · read-only; the agent edits this file</div>`;
   $('#fuStart').addEventListener('click', async () => {
     const last = DATA.prefs.last_start || {};
     const prompt = `Follow-up due ${f.date}${f.time ? ' ' + f.time : ''}: ${f.title}\n\n${(f.body || '').slice(0, 1500)}\n\nThis comes from FOLLOWUPS.md. When it is handled, record the outcome where it belongs and delete the item from that file.`;
-    const r = await api('/api/start', {cwd: f.cwd, prompt, permission_mode: last.permission_mode || 'acceptEdits', title: f.title.slice(0, 90)});
+    const r = await api('/api/start', {cwd: f.cwd, prompt, permission_mode: last.permission_mode || 'acceptEdits', title: f.title.slice(0, 90), followup: f.id});
     if (r.error) { toast(r.error); return; }
     toast('Session started for this follow-up', true); setTimeout(() => refresh(true), 1500);
   });
+  if (f.session_id) $('#fuOpen').addEventListener('click', () => openSession(f.session_id));
   $('#back').addEventListener('click', () => { detailOpen = false; render(); });
 }
 function renderRequest(d, q) {

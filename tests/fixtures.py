@@ -28,7 +28,8 @@ def point_at(home: Path) -> list:
             mock.patch.object(state.routines_mod, "hidden_sessions", lambda: {}),
             mock.patch.object(state.routines_mod, "board_rows", lambda agent, acks: []),
             mock.patch.object(state.followups_mod, "for_agent", lambda agent, hour, now: []),
-            mock.patch.object(state.remote_mod, "awake", lambda: {})]
+            mock.patch.object(state.remote_mod, "awake", lambda: {}),
+            mock.patch.object(state.remote_mod, "tasks", lambda: set())]
 
 
 def uninstall_hooks() -> None:
