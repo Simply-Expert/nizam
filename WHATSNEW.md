@@ -2,6 +2,21 @@
 
 The newest release is at the top.
 
+## 0.4.2 · 31 Oct 2026
+
+- **Your turn counts only what is really waiting.** Sessions Nizam started in the background,
+  from Telegram or for a follow-up while the Mac had no screen, no longer pile up there. One
+  started for a follow-up or request stops once that item is gone from the list and its turn is
+  over, and is marked done.
+- **Idle agents go back to sleep again.** The 3-hour sleep never fired, because a running
+  session keeps writing bookkeeping lines to its transcript and Nizam took that for activity.
+  It now goes by the last message. Your own sessions in the same folder no longer keep a
+  phone agent awake. This also stops sessions you marked done from reopening on their own,
+  and lets auto-done work again.
+- **One click, one place.** Clicking a background session between turns moves it into a
+  window of your terminal. Before, it could open the web, the Claude app, or a second copy of
+  the same session. Nizam never starts a second copy of a session that is still running.
+
 ## 0.4.1 · 28 Oct 2026
 
 - **Most overdue first.** The Due list is now one list across all agents, sorted by how late
