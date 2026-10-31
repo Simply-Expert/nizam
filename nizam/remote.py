@@ -233,6 +233,49 @@ def start_in_terminal(root: Path, name: str, permission_mode: str, provider: str
         raise WakeError(f"It did not connect within {CONNECT_WAIT}s. Its window on this Mac may say why.")
 
 
+def hosted() -> dict[str, dict]:
+    """Key -> record of what Nizam runs where no window shows it: servers and their task sessions."""
+    return {k: r for k, r in _live().items() if r.get("host") != "terminal"}
+
+
+def host_key(pid: int, records: dict[str, dict] | None = None) -> str | None:
+    """The key of the record that runs the session with this pid: its task's, or the server's that opened it."""
+    try:
+        ppid = int(subprocess.run(["ps", "-p", str(pid), "-o", "ppid="], capture_output=True,
+                                  text=True, timeout=3).stdout.strip() or 0)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    for key, rec in (hosted() if records is None else records).items():
+        if int(rec["pid"]) in (pid, ppid):
+            return key
+    return None
+
+
+def background(pid: int) -> bool:
+    """Whether Nizam runs this session where no window shows it."""
+    return host_key(pid) is not None
+
+
+def release(pid: int) -> bool:
+    """Stop a session Nizam runs in the background, so it can be resumed in a window; False when it isn't one."""
+    records = hosted()
+    key = host_key(pid, records)
+    if key is None:
+        return False
+    if records[key].get("task"):
+        _stop(_forget(key))
+    else:
+        # One of a server's sessions: the server stays up for the phone.
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+    deadline = time.time() + 5.0
+    while _alive(pid) and time.time() < deadline:
+        time.sleep(0.2)
+    return not _alive(pid)
+
+
 def _alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)

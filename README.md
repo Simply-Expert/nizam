@@ -332,8 +332,12 @@ While an agent is awake:
   *Put to sleep*. `nizam wake` and `nizam sleep` do the same from a terminal in the agent's folder.
 - `caffeinate` keeps the Mac from idle sleep, and on AC power from sleeping with the lid closed.
   The Mac still has to be awake for the bot to see a `/wake` in the first place.
-- it goes back to sleep on its own after 3 hours with no session activity, and the bot tells you.
-  A session that is working or waiting on you keeps it awake.
+- it goes back to sleep on its own after 3 hours with no activity in the sessions it runs, and the bot
+  tells you. One of those that is working or waiting on you keeps it awake; your own sessions in the
+  folder don't.
+- a session it started for a follow-up or request stops once that item is gone and its turn is over,
+  and is marked done.
+- a click on one of its sessions between turns moves it into a window of your terminal.
 - its server outlives a restart or update of Nizam, which finds it again afterwards.
 
 Sessions Nizam starts or resumes in a terminal have Remote Control on too (`claude --remote-control`),

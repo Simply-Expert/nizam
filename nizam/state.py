@@ -409,7 +409,8 @@ class Board:
                 # A routine's headless run shows as the routine; it becomes a session once you resume it.
                 agents.setdefault(str(agent.root), agent.to_dict())
                 continue
-            last_activity = max(t.mtime, t.last_ts or 0, h.last_ts if h else 0,
+            # Not the file's mtime when it has messages: a running CLI keeps appending bookkeeping lines.
+            last_activity = max(t.last_ts or t.mtime, h.last_ts if h else 0,
                                 rt.updated_at if rt else 0)
 
             done = done_map.get(sid)

@@ -68,5 +68,52 @@ class GhosttyJump(unittest.TestCase):
         self.assertEqual(self.g.writes, [])
 
 
+
+
+class OpenSession(unittest.TestCase):
+    def session(self, **kw):
+        return {"id": "abc-123", "live": True, "pid": 42, "cwd": "/w", "title": "t", "auto_title": "t",
+                "provider": "claude", "bucket": "inbox", "runtime_status": "idle", "remote_url": None,
+                "remind_due": False, **kw}
+
+    def open(self, s, background=False, released=True, focused=False):
+        with mock.patch("nizam.remote.background", return_value=background), \
+             mock.patch("nizam.remote.release", return_value=released) as release, \
+             mock.patch.object(T, "focus", return_value=focused) as focus, \
+             mock.patch.object(T, "resume", return_value=True) as resume, \
+             mock.patch.object(T, "open_in_desktop", return_value=False), \
+             mock.patch.object(T.subprocess, "Popen") as popen:
+            ok = T.open_session(s, "Ghostty")
+        return ok, release, focus, resume, popen
+
+    def test_a_background_session_between_turns_moves_to_a_window(self):
+        ok, release, focus, resume, popen = self.open(self.session(remote_url="https://x"), background=True)
+        self.assertTrue(ok)
+        release.assert_called_once_with(42)
+        resume.assert_called_once()
+        focus.assert_not_called()
+        popen.assert_not_called()
+
+    def test_a_working_background_session_opens_its_link_instead(self):
+        ok, release, _, resume, popen = self.open(
+            self.session(bucket="working", runtime_status="busy", remote_url="https://x"), background=True)
+        self.assertTrue(ok)
+        release.assert_not_called()
+        resume.assert_not_called()
+        self.assertEqual(popen.call_args[0][0], ["open", "https://x"])
+
+    def test_a_live_session_with_no_window_is_never_resumed_twice(self):
+        ok, _, _, resume, popen = self.open(self.session())
+        self.assertFalse(ok)
+        resume.assert_not_called()
+        popen.assert_not_called()
+
+    def test_a_closed_session_resumes(self):
+        ok, _, focus, resume, _ = self.open(self.session(live=False, pid=None))
+        self.assertTrue(ok)
+        focus.assert_not_called()
+        resume.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

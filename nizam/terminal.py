@@ -328,14 +328,21 @@ def resume(session_id: str, cwd: str, paste_only: bool = False, launcher: str = 
 
 
 def open_session(s: dict, launcher: str = "Terminal", paste_only: bool = False, remote: str | None = None) -> bool:
-    if s["live"] and s["pid"] and focus(s["pid"], s["cwd"], [s.get("auto_title", ""), s["title"]],
-                                        s["provider"], s["id"]):
-        return True
-    if s["live"] and s.get("remote_url"):
-        # A live session no terminal shows, such as one started for the phone: resuming would run it twice.
-        subprocess.Popen(["open", s["remote_url"]], env=clean_env(), **_DETACHED)
-        return True
-    if not s["live"] and open_in_desktop(s["id"], s["provider"]):
+    if s["live"] and s["pid"]:
+        from .remote import background, release
+        if background(s["pid"]):
+            # Between turns it can move to a window; mid-turn, stopping it would cut the turn off.
+            idle = s.get("runtime_status") == "idle" and (s["bucket"] in ("inbox", "later", "done") or s.get("remind_due"))
+            if idle and release(s["pid"]):
+                return resume(s["id"], s["cwd"], paste_only, launcher, s["provider"], remote)
+        elif focus(s["pid"], s["cwd"], [s.get("auto_title", ""), s["title"]], s["provider"], s["id"]):
+            return True
+        if s.get("remote_url"):
+            subprocess.Popen(["open", s["remote_url"]], env=clean_env(), **_DETACHED)
+            return True
+        # Resuming a session that still runs would run it twice.
+        return False
+    if open_in_desktop(s["id"], s["provider"]):
         return True
     return resume(s["id"], s["cwd"], paste_only, launcher, s["provider"], remote)
 

@@ -148,6 +148,17 @@ class Remote(unittest.TestCase):
         for rec in (server, other):
             os.kill(rec["pid"], 0)
 
+    def test_a_task_can_be_released_into_a_window(self):
+        server = remote.wake(self.agent, "Marketing", provider="fake")
+        rec = remote.wake(self.agent, "Marketing", provider="fake", task="a1", prompt="Send it")
+        self.assertTrue(remote.background(rec["pid"]))
+        self.assertFalse(remote.background(os.getpid()))
+        self.assertFalse(remote.release(os.getpid()))
+        self.assertTrue(remote.release(rec["pid"]))
+        self.assertRaises(ProcessLookupError, os.kill, rec["pid"], 0)
+        self.assertEqual(remote.tasks(), set())
+        os.kill(server["pid"], 0)
+
     def test_a_task_alone_keeps_its_agent_awake(self):
         rec = remote.wake(self.agent, "Marketing", provider="fake", task="a1", prompt="Send it", title="Send the draft")
         self.assertEqual(remote.awake()[str(self.agent)]["name"], "Marketing")

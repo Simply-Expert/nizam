@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import time
@@ -257,7 +258,8 @@ class Done(BoardCase):
         path = self.chat(age=100)
         self.board.persist.mark_done(SID, at=self.now - 50)
         self.assertEqual(self.state_of()[:2], ("done", "Done"))
-        os.utime(path, (self.now - 5, self.now - 5))
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(fx.assistant("One more thing.", self.now - 5, self.cwd)) + "\n")
         self.assertEqual(self.state_of()[0], "closed")
         self.assertNotIn(SID, self.board.persist.data["done"])
 
@@ -266,6 +268,13 @@ class Done(BoardCase):
         s = self.row()
         self.assertEqual((s["bucket"], s["label"]), ("done", "Auto-done"))
         self.assertAlmostEqual(s["done"]["at"], self.now - 86400, places=1)
+
+    def test_bookkeeping_writes_are_not_activity(self):
+        path = self.chat(age=3 * 86400)
+        os.utime(path, (self.now - 60, self.now - 60))
+        self.live(age=3 * 86400)
+        s = self.row()
+        self.assertEqual((s["bucket"], s["ago"]), ("done", "3d"))
 
     def test_done_drops_off_after_five_days(self):
         self.chat(age=8 * 86400)

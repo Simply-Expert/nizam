@@ -76,10 +76,14 @@ class Bot(unittest.TestCase):
                         mock.patch.object(T.remote, "start_in_terminal", self.fake_start_in_terminal),
                         mock.patch.object(T.remote, "stop", self.fake_stop),
                         mock.patch.object(T.remote, "trim", lambda: None),
-                        mock.patch.object(T.remote, "awake", lambda: self.awake)]
+                        mock.patch.object(T.remote, "awake", lambda: self.awake),
+                        mock.patch.object(T.remote, "hosted", lambda: dict(self.hosted)),
+                        mock.patch.object(T.remote, "host_key", lambda pid, recs=None: self.pids.get(pid)),
+                        mock.patch.object(T.remote, "stop_task", self.fake_stop_task)]
         for p in self.patches:
             p.start()
         self.woken, self.stopped, self.awake, self.in_terminal = [], [], {}, []
+        self.hosted, self.pids, self.stopped_tasks = {}, {}, []
         T.save_config({"token": "TOKEN", "bot": "nizam_bot", "users": [ME]})
         self.board = FakeBoard([agent("/w/marketing", "Marketing"), agent("/w/finance", "Finance"),
                                 agent("/w/fin-ops", "Fin Ops")])
@@ -101,6 +105,10 @@ class Bot(unittest.TestCase):
     def fake_start_in_terminal(self, root, name, mode, provider=None, **task):
         self.in_terminal.append((str(root), name, mode, task))
         return {"root": str(root), "name": name, "started": time.time(), "session_url": "https://claude.ai/code/session_G"}
+
+    def fake_stop_task(self, root, task):
+        self.stopped_tasks.append((str(root), task))
+        return True
 
     def fake_stop(self, root):
         self.stopped.append(str(root))
@@ -397,8 +405,9 @@ class Bot(unittest.TestCase):
 
     def test_an_idle_agent_goes_back_to_sleep(self):
         now = time.time()
-        self.awake = {"/w/marketing": {"name": "Marketing", "started": now - 5 * 3600}}
-        self.board.sessions = [{"agent": "/w/marketing", "bucket": "inbox", "live": True,
+        self.hosted = {"/w/marketing": {"root": "/w/marketing", "name": "Marketing", "pid": 7, "started": now - 5 * 3600}}
+        self.pids = {70: "/w/marketing"}
+        self.board.sessions = [{"id": "s1", "agent": "/w/marketing", "bucket": "inbox", "live": True, "pid": 70,
                                 "last_activity": now - 1 * 3600}]
         self.bot.config()
         self.bot.housekeep(now)
@@ -410,11 +419,47 @@ class Bot(unittest.TestCase):
 
     def test_a_busy_agent_stays_awake(self):
         now = time.time()
-        self.awake = {"/w/marketing": {"name": "Marketing", "started": now - 9 * 3600}}
-        self.board.sessions = [{"agent": "/w/marketing", "bucket": "working", "live": True,
+        self.hosted = {"/w/marketing": {"root": "/w/marketing", "name": "Marketing", "pid": 7, "started": now - 9 * 3600}}
+        self.pids = {70: "/w/marketing"}
+        self.board.sessions = [{"id": "s1", "agent": "/w/marketing", "bucket": "working", "live": True, "pid": 70,
                                 "last_activity": now - 8 * 3600}]
         self.bot.config()
         self.bot.housekeep(now)
+        self.assertEqual(self.stopped, [])
+
+    def test_your_own_sessions_in_the_folder_do_not_keep_it_awake(self):
+        now = time.time()
+        self.hosted = {"/w/marketing": {"root": "/w/marketing", "name": "Marketing", "pid": 7, "started": now - 5 * 3600}}
+        self.board.sessions = [{"id": "mine", "agent": "/w/marketing", "bucket": "working", "live": True, "pid": 99,
+                                "last_activity": now - 60}]
+        self.bot.config()
+        self.bot.housekeep(now)
+        self.assertEqual(self.stopped, ["/w/marketing"])
+
+    def test_a_task_stops_once_its_follow_up_is_gone_and_its_turn_is_over(self):
+        now = time.time()
+        done = []
+        self.board.persist.mark_done = lambda sid, by: done.append((sid, by))
+        self.hosted = {"/w/marketing#f1": {"root": "/w/marketing", "name": "Marketing", "pid": 7, "task": "f1",
+                                           "started": now - 3600},
+                       "/w/marketing#f2": {"root": "/w/marketing", "name": "Marketing", "pid": 8, "task": "f2",
+                                           "started": now - 3600},
+                       "/w/marketing#f3": {"root": "/w/marketing", "name": "Marketing", "pid": 9, "task": "f3",
+                                           "started": now - 3600},
+                       "/w/marketing#talk-va": {"root": "/w/marketing", "name": "Marketing", "pid": 10,
+                                                "task": "talk-va", "started": now - 3600},
+                       "/w/marketing#f4": {"root": "/w/marketing", "name": "Marketing", "pid": 11, "task": "f4",
+                                           "started": now - 60}}
+        self.pids = {7: "/w/marketing#f1", 8: "/w/marketing#f2", 9: "/w/marketing#f3"}
+        self.board.followups = [{"id": "f:f2"}]
+        self.board.sessions = [
+            {"id": "s1", "agent": "/w/marketing", "bucket": "inbox", "live": True, "pid": 7, "last_activity": now - 60},
+            {"id": "s2", "agent": "/w/marketing", "bucket": "inbox", "live": True, "pid": 8, "last_activity": now - 60},
+            {"id": "s3", "agent": "/w/marketing", "bucket": "working", "live": True, "pid": 9, "last_activity": now}]
+        self.bot.config()
+        self.bot.housekeep(now)
+        self.assertEqual(self.stopped_tasks, [("/w/marketing", "f1")])
+        self.assertEqual(done, [("s1", "auto")])
         self.assertEqual(self.stopped, [])
 
     def test_a_new_bot_forgets_the_old_one(self):

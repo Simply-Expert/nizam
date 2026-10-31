@@ -650,7 +650,11 @@ function renderList() {
   });
   if ((!CUR || !NAV.includes(CUR)) && NAV.length && window.innerWidth > 760) { CUR = NAV[0]; renderListSelection(); }
 }
-function openSession(id) { if (id && !/^[frq]:/.test(id)) api(`/api/sessions/${id}/open`, {}); }
+async function openSession(id) {
+  if (!id || /^[frq]:/.test(id)) return;
+  const r = await api(`/api/sessions/${id}/open`, {});
+  if (r && r.ok === false) toast("Couldn't find this session's window, and it is still running, so it wasn't opened again");
+}
 function renderListSelection() { document.querySelectorAll('.item').forEach(i => i.classList.toggle('on', i.dataset.id === CUR)); }
 
 /* ---------- detail ---------- */

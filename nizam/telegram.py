@@ -46,6 +46,7 @@ FOLLOWUP_BUTTONS = 8
 REQUEST_BUTTONS = 5
 HOUSEKEEP_EVERY = 60
 DEFAULT_IDLE_HOURS = 3
+RETIRE_GRACE = 10 * 60
 DEFAULT_PERMISSION_MODE = "acceptEdits"
 DEFAULT_AWAY_MINUTES = 5
 NOTIFY_MODES = ("off", "away", "always")
@@ -470,23 +471,56 @@ class Bot:
             return
         self._next_housekeep = now + HOUSEKEEP_EVERY
         remote.trim()
-        awake = remote.awake()
-        hours = self.cfg.get("idle_hours", DEFAULT_IDLE_HOURS)
-        if not awake or not hours:
+        recs = remote.hosted()
+        if not recs:
             return
-        sessions = self.board.snapshot()["sessions"]
-        for root, rec in awake.items():
-            mine = [s for s in sessions if s["agent"] == root]
-            if any(s["live"] and s["bucket"] in ("working", "needs") for s in mine):
+        snap = self.board.snapshot()
+        ran: dict[str, list[dict]] = {}
+        for s in snap["sessions"]:
+            key = s["live"] and s.get("pid") and remote.host_key(s["pid"], recs)
+            if key:
+                ran.setdefault(key, []).append(s)
+        for key in self._retire_handled(recs, ran, snap, now):
+            del recs[key]
+        hours = self.cfg.get("idle_hours", DEFAULT_IDLE_HOURS)
+        if not hours:
+            return
+        roots: dict[str, list[str]] = {}
+        for key, rec in recs.items():
+            roots.setdefault(rec["root"], []).append(key)
+        for root, keys in roots.items():
+            mine = [s for k in keys for s in ran.get(k, [])]
+            if any(s["bucket"] in ("working", "needs") for s in mine):
                 continue
-            last = max([rec["started"]] + [s["last_activity"] for s in mine])
+            # Sessions you run yourself in a window don't keep the phone's awake; ones that ended still count.
+            ended = [s for s in snap["sessions"] if s["agent"] == root and not s["live"]]
+            last = max([recs[k]["started"] for k in keys] + [s["last_activity"] for s in mine + ended])
             if now - last < hours * 3600 or not remote.stop(Path(root)):
                 continue
             self.board.invalidate()
             if self.cfg.get("token"):
+                name = recs[keys[0]]["name"]
                 for user in self.cfg.get("users") or []:
-                    self.send(user, f"{rec['name']} went back to sleep after {hours:g} hours with nothing happening. "
-                                    f"/wake {rec['name']} brings it back.")
+                    self.send(user, f"{name} went back to sleep after {hours:g} hours with nothing happening. "
+                                    f"/wake {name} brings it back.")
+
+    def _retire_handled(self, recs: dict[str, dict], ran: dict[str, list[dict]], snap: dict, now: float) -> list[str]:
+        """Stop the task sessions whose follow-up or request is gone once their turn is over; their keys."""
+        open_items = {x["id"][2:] for x in snap.get("followups", []) + snap.get("requests", [])}
+        out = []
+        for key, rec in recs.items():
+            task = rec.get("task")
+            # A talk ends with `nizam request sleep`; a fresh session may not show on the board yet.
+            if not task or task.startswith("talk-") or task in open_items or now - rec["started"] < RETIRE_GRACE:
+                continue
+            if any(s["bucket"] in ("working", "needs") for s in ran.get(key, [])):
+                continue
+            if remote.stop_task(Path(rec["root"]), task):
+                for s in ran.get(key, []):
+                    self.board.persist.mark_done(s["id"], by="auto")
+                self.board.invalidate()
+                out.append(key)
+        return out
 
     # ---- messages
 
