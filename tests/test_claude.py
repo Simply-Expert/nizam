@@ -279,6 +279,22 @@ class StatusLine(Case):
         self.assertEqual(get("claude").limits(1000), [])
 
 
+class AgentMarker(unittest.TestCase):
+    def setUp(self):
+        self.folder = Path(tempfile.mkdtemp())
+        (self.folder / ".claude").mkdir()
+
+    def test_only_settings_local_is_not_an_agent(self):
+        (self.folder / ".claude" / "settings.local.json").write_text("{}")
+        self.assertFalse(providers.get("claude").marks_agent(self.folder))
+        (self.folder / ".claude" / "agents").mkdir()
+        self.assertTrue(providers.get("claude").marks_agent(self.folder))
+
+    def test_a_folder_it_may_not_list_is_not_an_agent_and_does_not_crash(self):
+        with mock.patch.object(Path, "iterdir", side_effect=PermissionError(1, "Operation not permitted")):
+            self.assertFalse(providers.get("claude").marks_agent(self.folder))
+
+
 class Version(unittest.TestCase):
     def check(self, out):
         from nizam.providers import claude

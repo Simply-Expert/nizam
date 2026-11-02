@@ -435,7 +435,11 @@ class Claude(Provider):
         if dot.is_dir():
             # Claude drops settings.local.json wherever you grant a permission;
             # only a deliberately configured .claude folder marks an agent.
-            return any(c.name != "settings.local.json" for c in dot.iterdir())
+            try:
+                return any(c.name != "settings.local.json" for c in dot.iterdir())
+            except OSError:
+                # macOS privacy (e.g. ~/Documents) lets the folder be seen but not listed.
+                return False
         return False
 
     def install_hooks(self) -> list[str]:
