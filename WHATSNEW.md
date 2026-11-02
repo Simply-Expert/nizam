@@ -2,6 +2,14 @@
 
 The newest release is at the top.
 
+## 0.4.3 · 2 Nov 2026
+
+- **The board loads with projects in Documents.** If a Claude session had run in a folder under
+  Documents, Desktop or Downloads, macOS could stop Nizam from looking inside its `.claude`
+  folder, and the board stayed empty. Nizam now skips that folder and loads the rest.
+  Follow-ups, routines and areas stored there still don't show until you give Full Disk Access
+  to the Python that runs Nizam.
+
 ## 0.4.2 · 31 Oct 2026
 
 - **Your turn counts only what is really waiting.** Sessions Nizam started in the background,
