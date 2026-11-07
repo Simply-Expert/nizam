@@ -164,8 +164,8 @@ last message was wrong too often; you are the only one who knows a task is over.
   with a time comes due. Clicking one goes where *Jump to* would: the session's terminal tab, or
   the Claude app for a session started there.
 
-Claude Code sessions started from the Claude desktop app appear too, but without a live status
-and with Jump to opening the app rather than the chat. Regular desktop chats are not Claude Code
+Claude Code sessions started from the Claude desktop app appear too, with
+their live status; Jump to opens the app rather than the chat. Regular desktop chats are not Claude Code
 sessions and are not shown.
 
 ## The `nizam` skill

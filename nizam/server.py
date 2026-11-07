@@ -257,7 +257,16 @@ class Handler(BaseHTTPRequestHandler):
                 b.persist.ack_routine(r["id"][2:], r["last"]["run_id"])
             elif parts[2] == "open" and (run := r["attention"] if body.get("run") == "attention" else r["last"]) \
                     and run["session_id"]:
-                ok = terminal.resume(run["session_id"], r["cwd"], bool(body.get("paste")), term)
+                s = self._session(run["session_id"])
+                if s and s["live"]:
+                    ok = terminal.open_session(s, term, bool(body.get("paste")), terminal.remote_for(prefs))
+                else:
+                    ok = terminal.resume(run["session_id"], r["cwd"], bool(body.get("paste")), term)
+                # Once you are in the run's session, the routine no longer waits on you; the session does.
+                if ok and run["run_id"] in {r["attention"] and r["attention"]["run_id"],
+                                            r["failing"] and r["last"]["run_id"]}:
+                    b.persist.ack_routine(r["id"][2:], run["run_id"])
+                    b.invalidate()
                 return self._json({"ok": ok})
             else:
                 return self._json({"error": "unknown action"}, 400)

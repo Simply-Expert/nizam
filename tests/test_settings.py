@@ -143,6 +143,21 @@ class Routes(Case):
         self.assertEqual((code, r["settings"]["telegram"]["bot"]), (200, None))
         self.assertFalse(T.CONFIG_FILE.exists())
 
+    def test_opening_a_routine_run_takes_it_off_your_plate(self):
+        run = {"run_id": "2", "session_id": "abc"}
+        routine = {"id": "r:daily", "cwd": "/w", "failing": False, "attention": run, "last": {**run, "run_id": "3"}}
+        session = {"id": "abc", "live": True}
+        self.board.snapshot = lambda: {"agents": [], "sessions": [session], "routines": [routine]}
+        with mock.patch.object(terminal, "open_session", return_value=True) as focus, \
+                mock.patch.object(terminal, "resume", return_value=True) as resume:
+            self.call("/api/routines/open", {"id": "r:daily"})
+            self.assertEqual(self.board.persist.data.get("routine_acks"), None)
+            self.call("/api/routines/open", {"id": "r:daily", "run": "attention"})
+            self.assertEqual(self.board.persist.data["routine_acks"], {"daily": "2"})
+            session["live"] = False
+            self.call("/api/routines/open", {"id": "r:daily"})
+        self.assertEqual((focus.call_count, resume.call_count), (2, 1))
+
 
 if __name__ == "__main__":
     unittest.main()
