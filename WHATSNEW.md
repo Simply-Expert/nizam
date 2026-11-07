@@ -2,6 +2,13 @@
 
 The newest release is at the top.
 
+## 0.4.4 · 7 Nov 2026
+
+- **Opening a routine run takes it off Needs you.** Open the run a routine flagged for you, or
+  its last run when that one failed, and the routine stops waiting on you: the session it opened
+  carries on from there. If that run's session is still live, Nizam goes to it instead of
+  resuming a second copy.
+
 ## 0.4.3 · 2 Nov 2026
 
 - **The board loads with projects in Documents.** If a Claude session had run in a folder under
