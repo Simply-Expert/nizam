@@ -85,6 +85,28 @@ class Transcripts(Case):
         self.assertEqual((t.first_user_prompt, t.last_user_prompt, t.last_assistant_text),
                          ("the first prompt", "the last prompt", "the end"))
 
+    def test_a_screenshot_bigger_than_the_tail_does_not_hide_the_session(self):
+        t0 = self.now - 100
+        t = self.read([
+            fx.user("the first prompt", t0, self.cwd),
+            fx.assistant("x" * (70 * 1024), t0 + 1, self.cwd),
+            fx.assistant("the reply", t0 + 2, self.cwd, tools=("Read",)),
+            fx.user([{"type": "tool_result", "content": "x" * (300 * 1024)}], t0 + 3, self.cwd),
+        ])
+        self.assertGreaterEqual(t.entries, 2)
+        self.assertEqual(t.last_assistant_text, "the reply")
+        self.assertAlmostEqual(t.last_ts, t0 + 3, places=3)
+
+    def test_the_preview_survives_a_long_run_of_tool_calls(self):
+        t0 = self.now - 1000
+        entries = [fx.user("the first prompt", t0, self.cwd), fx.assistant("x" * (70 * 1024), t0 + 1, self.cwd),
+                   fx.assistant("the reply", t0 + 2, self.cwd)]
+        for i in range(3, 203):
+            entries.append(fx.assistant("", t0 + i, self.cwd, tools=("Read",)))
+            entries.append(fx.user([{"type": "tool_result", "content": "x" * 2000}], t0 + i, self.cwd))
+        t = self.read(entries)
+        self.assertEqual((t.last_role, t.last_assistant_text), ("assistant", "the reply"))
+
     def test_background_work_until_it_reports_back(self):
         t0 = self.now - 100
         t = self.read([

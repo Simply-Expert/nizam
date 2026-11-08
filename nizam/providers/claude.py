@@ -34,6 +34,7 @@ DESKTOP_SESSIONS = Path.home() / "Library" / "Application Support" / "Claude" / 
 _DESKTOP_ID = re.compile(r"^local_[A-Za-z0-9-]{1,64}$")
 
 TAIL_BYTES = 256 * 1024
+MAX_TAIL_BYTES = 16 * 1024 * 1024
 MIN_VERSION = (2, 1, 158)
 TESTED_VERSION = (2, 1, 278)   # newest Claude Code this was run against
 PENDING_TOOLS = {"ExitPlanMode": "Plan to review", "AskUserQuestion": "Asking you"}
@@ -268,6 +269,34 @@ def _background(path: Path, f) -> dict[str, tuple[str, float]]:
     return dict(bg)
 
 
+def _has_live_state(lines: list[bytes]) -> bool:
+    messages, replied = 0, False
+    for raw in filter(None, lines):
+        try:
+            e = json.loads(raw)
+        except ValueError:
+            continue
+        if e.get("type") not in ("user", "assistant") or e.get("isSidechain"):
+            continue
+        messages += 1
+        content = (e.get("message") or {}).get("content")
+        if e["type"] == "assistant" and isinstance(content, list):
+            replied = replied or any(isinstance(b, dict) and b.get("type") == "text" and b.get("text") for b in content)
+    return messages >= 2 and replied
+
+
+def _tail_lines(f, size: int) -> list[bytes]:
+    """The file's last lines, reaching back to a reply: one screenshot can outweigh TAIL_BYTES."""
+    reach = TAIL_BYTES
+    while True:
+        f.seek(max(0, size - reach))
+        tail = f.read()
+        lines = tail[tail.find(b"\n") + 1:].split(b"\n")
+        if reach >= min(size, MAX_TAIL_BYTES) or _has_live_state(lines):
+            return lines
+        reach *= 2
+
+
 def read_transcript(path: Path, full: bool = False) -> Transcript | None:
     try:
         st = path.stat()
@@ -279,9 +308,7 @@ def read_transcript(path: Path, full: bool = False) -> Transcript | None:
             if not full and st.st_size > TAIL_BYTES:
                 # Head for cwd/first prompt/summary, tail for the live state.
                 head = f.read(64 * 1024)
-                f.seek(-TAIL_BYTES, os.SEEK_END)
-                tail = f.read()
-                lines = head.split(b"\n") + tail[tail.find(b"\n") + 1:].split(b"\n")
+                lines = head.split(b"\n") + _tail_lines(f, st.st_size)
             else:
                 lines = f.read().split(b"\n")
             t.background = _background(path, f)
