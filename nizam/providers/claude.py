@@ -73,6 +73,7 @@ EVENT_KINDS = {"UserPromptSubmit": WORKING, "PostToolUse": WORKING, "SessionStar
                "Stop": TURN_DONE, "SessionEnd": ENDED, "ElicitationResult": ANSWERED}
 ENV_MARKERS = ("AI_AGENT", "ENABLE_CLAUDEAI_MCP_SERVERS")
 QUICK_MODEL = "haiku"
+DEFAULT_EFFORT = "medium"
 _RC_SESSION = re.compile(r"https://claude\.ai/code/session_[A-Za-z0-9]+")
 _RC_ENVIRONMENT = re.compile(r"https://claude\.ai/code\?environment=env_[A-Za-z0-9]+")
 _BRIDGE_ID = re.compile(r"^session_[A-Za-z0-9]+$")
@@ -622,6 +623,8 @@ class Claude(Provider):
                "--append-system-prompt", system_prompt]
         if meta.get("model"):
             cmd += ["--model", meta["model"]]
+        # Without the flag a routine runs at whatever level was last saved with /effort.
+        cmd += ["--effort", meta.get("effort") or DEFAULT_EFFORT]
         if meta.get("permission_mode"):
             cmd += ["--permission-mode", meta["permission_mode"]]
         for key, flag in (("allowed_tools", "--allowedTools"), ("disallowed_tools", "--disallowedTools")):

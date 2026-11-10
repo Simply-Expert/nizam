@@ -238,8 +238,9 @@ The prompt: numbered steps, the files to read first, the exact output wanted, an
   sleeps through its slots and runs them late, so keep long or hourly routines to waking hours.
 - `timeout`: `90s`, `30m`, `2h`; default 30m. Counts awake time only. The run is killed at the limit and reported as timed out.
 - `allowed_tools` / `disallowed_tools`: a headless run cannot answer a permission prompt, so every
-  tool the routine needs must be listed (least privilege: only those). `model` and
-  `permission_mode` are optional. `enabled: false` pauses it without deleting the file.
+  tool the routine needs must be listed (least privilege: only those). `model`, `effort` and
+  `permission_mode` are optional. `effort` is `low`, `medium`, `high`, `xhigh` or `max`; the default is
+  `medium`, whatever level was saved with `/effort`. `enabled: false` pauses it without deleting the file.
 - `command: node scripts/collect.mjs`: makes it a **script routine**. The command runs through `sh` in
   the folder that holds `routines/`, with the login PATH and the `env_file`; Claude is not involved and it
   costs nothing. Success is exit code 0 (a last output line `OUTCOME: NO_CHANGE` or

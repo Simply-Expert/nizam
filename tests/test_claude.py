@@ -515,13 +515,13 @@ class Headless(Case):
     def test_completed_run(self):
         self.fake_claude({"type": "result", "is_error": False, "total_cost_usd": 0.12, "num_turns": 3,
                           "result": "Books closed.\nOUTCOME: COMPLETE"})
-        code = self.go(self.routine("schedule: daily 09:30\nmodel: sonnet\npermission_mode: acceptEdits\n"
+        code = self.go(self.routine("schedule: daily 09:30\nmodel: sonnet\neffort: xhigh\npermission_mode: acceptEdits\n"
                                     "allowed_tools: Read, Bash(git log, -n 5)\ndisallowed_tools: Write\n"))
         call, = self.calls()
         sid = call["argv"][5]
         self.assertEqual(call["argv"], [
             "-p", "--output-format", "stream-json", "--verbose", "--session-id", sid,
-            "--append-system-prompt", runner.HEADLESS.format(name="daily"), "--model", "sonnet",
+            "--append-system-prompt", runner.HEADLESS.format(name="daily"), "--model", "sonnet", "--effort", "xhigh",
             "--permission-mode", "acceptEdits", "--allowedTools", "Read,Bash(git log, -n 5)",
             "--disallowedTools", "Write"])
         self.assertRegex(call["stdin"], r"^Current date/time: \d{4}-\d\d-\d\d \d\d:\d\d .*\n\nClose the books\.\n$")
@@ -541,7 +541,8 @@ class Headless(Case):
     def test_bare_routine_passes_no_optional_flags(self):
         self.fake_claude({"type": "result", "result": "OUTCOME: COMPLETE"})
         self.go(self.routine())
-        self.assertEqual(len(self.calls()[0]["argv"]), 8)
+        argv = self.calls()[0]["argv"]
+        self.assertEqual((len(argv), argv[-2:]), (10, ["--effort", "medium"]))
 
     def test_no_outcome_line_is_incomplete(self):
         self.fake_claude({"type": "result", "result": "I think it went fine."})
