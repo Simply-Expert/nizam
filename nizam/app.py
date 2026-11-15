@@ -50,6 +50,7 @@ NSPopoverBehaviorTransient = 1
 NSEventMaskLeftMouseDown = 1 << 1
 NSEventMaskRightMouseDown = 1 << 3
 NSFloatingWindowLevel = 5
+NSWindowAbove = 1
 NSWindowStyleMaskBorderless = 0
 NSWindowStyleMaskTitled = 1 << 0
 NSWindowStyleMaskClosable = 1 << 1
@@ -784,13 +785,18 @@ class AppDelegate(NSObject):
     @objc.python_method
     def hide_list(self):
         self.hover_bucket = None
+        self._close_list()
+
+    @objc.python_method
+    def _close_list(self):
+        self.badge.removeChildWindow_(self.list_panel)
         self.list_panel.orderOut_(None)
 
     @objc.python_method
     def _sync_list(self):
         rows = self.items.get(self.hover_bucket) if self.hover_bucket else None
         if not rows:
-            self.list_panel.orderOut_(None)
+            self._close_list()
             return
         v = self.list_view
         v.bucket = self.hover_bucket
@@ -807,7 +813,9 @@ class AppDelegate(NSObject):
             y = badge.origin.y + BADGE_H + 4
         self.list_panel.setFrame_display_(NSMakeRect(x, y, LIST_W, h), True)
         v.setNeedsDisplay_(True)
-        self.list_panel.orderFrontRegardless()
+        # On its own the list can stick to one Space; as a child it follows the badge.
+        if self.list_panel.parentWindow() is None:
+            self.badge.addChildWindow_ordered_(self.list_panel, NSWindowAbove)
 
     @objc.python_method
     def list_picked(self, row):
@@ -994,6 +1002,7 @@ class AppDelegate(NSObject):
         if on:
             self.badge.orderFrontRegardless()
         else:
+            self.hide_list()
             self.badge.orderOut_(None)
         self.vc.refresh()
 

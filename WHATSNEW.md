@@ -2,6 +2,15 @@
 
 The newest release is at the top.
 
+## 0.4.5 · 15 Nov 2026
+
+- **The badge's hover list opens on the desktop you are on.** On any desktop but one, hovering a
+  count could open its list out of sight on another desktop. It now opens next to the badge
+  wherever you are.
+- **A big message no longer drops a running session off the board.** When one message, usually a
+  screenshot, was larger than the part of a long transcript Nizam reads, the session counted as
+  empty and disappeared until later messages came in.
+
 ## 0.4.4 · 7 Nov 2026
 
 - **Opening a routine run takes it off Needs you.** Open the run a routine flagged for you, or
