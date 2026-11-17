@@ -115,6 +115,13 @@ class Provider:
         """The plan's usage windows as the tool last reported them, shortest first."""
         return []
 
+    def claim_usage_poll(self, now: float) -> bool:
+        """True, once, when limits() wants a fresh poll_usage(); a True claims the slot."""
+        return False
+
+    def poll_usage(self, exe: str, env: dict[str, str]) -> None:
+        """Ask the tool for what its status line does not report. Slow: run it off the main thread."""
+
     def signal(self, event: dict) -> Signal:
         """One line of events.jsonl, as this tool's hook wrote it."""
         return Signal(ACTIVITY)

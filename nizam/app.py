@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -34,10 +35,11 @@ from UserNotifications import (
 from WebKit import WKWebView, WKWebViewConfiguration, WKUserContentController
 import objc
 
-from . import telegram, terminal, triage, update
+from . import providers, telegram, terminal, triage, update
 from .paths import NIZAM_DIR, ensure_dirs
 from .cli import start_update
 from .launch import BUNDLE_ID, NOTIFICATION_SOUND, PID_FILE, QUIT_FLAG, app_running, login_enabled, set_login
+from .runner import login_path
 from .server import make_server
 from .state import Board, needs_you
 
@@ -650,7 +652,20 @@ class AppDelegate(NSObject):
                 sys.stderr.write(f"refresh failed: {e}\n")
             else:
                 self.performSelectorOnMainThread_withObject_waitUntilDone_("refresh:", None, False)
+            self._poll_usage()
             time.sleep(REFRESH_SECS)
+
+    @objc.python_method
+    def _poll_usage(self):
+        now = time.time()
+        for p in providers.active():
+            if not p.claim_usage_poll(now):
+                continue
+            env = providers.clean_env()
+            env["PATH"] = login_path()
+            exe = shutil.which(p.cli, path=env["PATH"])
+            if exe:
+                threading.Thread(target=p.poll_usage, args=(exe, env), daemon=True).start()
 
     def refresh_(self, _):
         snap = self.snap

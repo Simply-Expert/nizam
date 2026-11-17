@@ -58,8 +58,14 @@ MARK = "nizam/hook.py"
 STATUSLINE_SCRIPT = Path(__file__).resolve().parents[1] / "statusline.py"
 STATUSLINE_MARK = "nizam/statusline.py"
 USAGE_FILE = NIZAM_DIR / "usage-claude.json"
+USAGE_ROWS_FILE = NIZAM_DIR / "usage-claude-rows.json"   # /usage's meters, polled
+USAGE_POLL_SECS = 15 * 60
+USAGE_TIMEOUT = 60
 # rate_limits keys (Claude >= 2.1.251) -> label, length of the window
 LIMIT_WINDOWS = {"five_hour": ("5-hour", 5 * 3600.0), "seven_day": ("Weekly", 7 * 86400.0)}
+# /usage row group -> label, length of the window; and the unscoped kinds the status line also reports
+USAGE_GROUPS = {"session": LIMIT_WINDOWS["five_hour"], "weekly": LIMIT_WINDOWS["seven_day"]}
+STATUS_LINE_KINDS = {"session": "five_hour", "weekly_all": "seven_day"}
 
 NEEDS_EVENTS = {
     ("Notification", "permission_prompt"): "Permission needed",
@@ -130,6 +136,49 @@ def _parse_ts(s: str | None) -> float | None:
         return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
     except ValueError:
         return None
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def _window(w) -> dict | None:
+    return w if isinstance(w, dict) and isinstance(w.get("used_percentage"), (int, float)) else None
+
+
+def _usage_row(r, seen_at: float) -> Limit | None:
+    """One of /usage's meter rows, e.g. {"kind": "weekly_scoped", "group": "weekly", "percent": 85,
+    "resets_at": "<iso>", "scope": {"model": {"display_name": "Fable"}}}."""
+    if not isinstance(r, dict) or not isinstance(r.get("percent"), (int, float)):
+        return None
+    group = str(r.get("group") or "")
+    label, window = USAGE_GROUPS.get(group, (group.replace("_", " ").capitalize() or "Plan", None))
+    scope = r.get("scope")
+    if not isinstance(scope, dict):
+        scope = {}
+    name = next((s["display_name"] for s in (scope.get("model"), scope.get("surface"))
+                 if isinstance(s, dict) and isinstance(s.get("display_name"), str)), None)
+    resets = r.get("resets_at")
+    return Limit(f"{label} ({name})" if name else label, float(r["percent"]),
+                 _parse_ts(resets) if isinstance(resets, str) else None, seen_at, window)
+
+
+def _usage_rows(stdout: str) -> list[dict] | None:
+    for line in stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        report = ev.get("usage_report") if isinstance(ev, dict) else None
+        if isinstance(report, dict):
+            limits = report.get("rate_limits")
+            rows = limits.get("limits") if isinstance(limits, dict) else None
+            return rows if isinstance(rows, list) else None
+    return None
 
 
 def _user_text(content) -> str | None:
@@ -449,6 +498,7 @@ class Claude(Provider):
     cli_dirs = (CLAUDE_DIR / "local",)
     desktop_app = "Claude"
     permission_modes = ("acceptEdits", "plan", "auto", "default")
+    _usage_tried = 0.0
 
     def transcripts(self, max_age_secs: float) -> list[Transcript]:
         return iter_transcripts(max_age_secs)
@@ -545,21 +595,58 @@ class Claude(Provider):
                                                          f"plan usage: {'status line wired' if wrapped else 'not wired'}"]
 
     def limits(self, now: float) -> list[Limit]:
-        try:
-            d = json.loads(USAGE_FILE.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return []
-        out = []
-        for key, (label, window) in LIMIT_WINDOWS.items():
-            w = (d.get("rate_limits") or {}).get(key)
-            if not isinstance(w, dict) or not isinstance(w.get("used_percentage"), (int, float)):
+        # Only /usage has per-model meters; a newer status line has the fresher number for the two it shares.
+        line, rows = _read_json(USAGE_FILE), _read_json(USAGE_ROWS_FILE)
+        line_ts, rows_ts = line.get("ts", 0), rows.get("ts", 0)
+        reported = line.get("rate_limits")
+        if not isinstance(reported, dict):
+            reported = {}
+        out, covered = [], set()
+        for r in rows.get("limits") or []:
+            lim = _usage_row(r, rows_ts)
+            if lim is None:
                 continue
-            resets_at = w.get("resets_at")
-            if resets_at and resets_at <= now:     # the window rolled over with nothing reported since
-                out.append(Limit(label, 0.0, None, d.get("ts", 0), window))
-            else:
-                out.append(Limit(label, float(w["used_percentage"]), resets_at, d.get("ts", 0), window))
-        return out
+            key = STATUS_LINE_KINDS.get(r.get("kind"))
+            covered.add(key)
+            w = _window(reported.get(key))
+            if key and line_ts > rows_ts and w:
+                lim.used, lim.resets_at, lim.seen_at = float(w["used_percentage"]), w.get("resets_at"), line_ts
+            out.append(lim)
+        if line_ts > rows_ts:
+            for key, (label, window) in LIMIT_WINDOWS.items():
+                w = _window(reported.get(key))
+                if key not in covered and w:
+                    out.append(Limit(label, float(w["used_percentage"]), w.get("resets_at"), line_ts, window))
+        for lim in out:
+            if lim.resets_at and lim.resets_at <= now:     # the window rolled over with nothing reported since
+                lim.used, lim.resets_at = 0.0, None
+        return sorted(out, key=lambda l: l.window_secs or float("inf"))
+
+    def claim_usage_poll(self, now: float) -> bool:
+        # Usage only moves when Claude is used, and the status line ticks when it is.
+        rows_ts = _read_json(USAGE_ROWS_FILE).get("ts", 0)
+        if _read_json(USAGE_FILE).get("ts", 0) <= rows_ts or now - max(rows_ts, self._usage_tried) < USAGE_POLL_SECS:
+            return False
+        self._usage_tried = now
+        return True
+
+    def poll_usage(self, exe: str, env: dict[str, str]) -> None:
+        # /usage runs locally, spending nothing; no settings sources means no hooks, so it never lands on the board.
+        try:
+            out = subprocess.run([exe, "-p", "/usage", "--output-format", "stream-json", "--verbose",
+                                  "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config"],
+                                 capture_output=True, text=True, timeout=USAGE_TIMEOUT, env=env,
+                                 stdin=subprocess.DEVNULL, cwd=str(NIZAM_DIR)).stdout
+        except (OSError, subprocess.SubprocessError) as e:
+            sys.stderr.write(f"usage poll failed: {e}\n")
+            return
+        rows = _usage_rows(out)
+        if rows is None:
+            sys.stderr.write("usage poll: no usage rows in the reply\n")
+            return
+        tmp = USAGE_ROWS_FILE.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"ts": time.time(), "limits": rows}), encoding="utf-8")
+        os.replace(tmp, USAGE_ROWS_FILE)
 
     def signal(self, event: dict) -> Signal:
         name = event.get("hook_event_name")

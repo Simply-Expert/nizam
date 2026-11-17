@@ -2,6 +2,14 @@
 
 The newest release is at the top.
 
+## 0.4.6 · 17 Nov 2026
+
+- **The badge shows per-model weekly limits, like Fable's.** Your plan can cap a single model each
+  week on top of the overall weekly limit, and that cap can run out first. The badge now shows
+  each limit side by side (all models, then Fable), and the hover names them. The per-model
+  numbers come from Claude Code's `/usage`, checked at most every 15 minutes while you use Claude;
+  it spends no usage and does not show on the board.
+
 ## 0.4.5 · 15 Nov 2026
 
 - **The badge's hover list opens on the desktop you are on.** On any desktop but one, hovering a

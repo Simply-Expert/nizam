@@ -301,6 +301,86 @@ class StatusLine(Case):
         self.assertEqual(get("claude").limits(1000), [])
 
 
+class UsageRows(Case):
+    WEEK = "2026-11-19T16:00:00.512135+00:00"
+    ROWS = [{"kind": "weekly_all", "group": "weekly", "percent": 59, "resets_at": WEEK, "scope": None,
+             "severity": "normal", "is_active": False},
+            {"kind": "weekly_scoped", "group": "weekly", "percent": 85, "resets_at": WEEK,
+             "scope": {"model": {"display_name": "Fable"}, "surface": None}, "severity": "warning", "is_active": True}]
+
+    def setUp(self):
+        super().setUp()
+        from nizam.providers.claude import Claude
+        self.p = Claude()
+        self.nizam = self.home / ".nizam"
+
+    def write(self, name, d):
+        (self.nizam / name).write_text(json.dumps(d))
+
+    def line(self, ts, used=61):
+        self.write("usage-claude.json", {"ts": ts, "rate_limits": {"seven_day": {"used_percentage": used, "resets_at": 1795104000}}})
+
+    def rows(self, ts, rows=ROWS):
+        self.write("usage-claude-rows.json", {"ts": ts, "limits": rows})
+
+    def view(self, now=1794000000):
+        return [(l.label, l.used, l.seen_at) for l in self.p.limits(now)]
+
+    def test_per_model_rows_show_beside_the_status_line(self):
+        self.rows(100)
+        self.line(50)
+        self.assertEqual(self.view(), [("Weekly", 59.0, 100), ("Weekly (Fable)", 85.0, 100)])
+        self.line(200)
+        self.assertEqual(self.view(), [("Weekly", 61.0, 200), ("Weekly (Fable)", 85.0, 100)])
+        week = self.p.limits(1794000000)[1]
+        self.assertEqual((week.resets_at, week.window_secs), (1795104000.512135, 7 * 86400.0))
+
+    def test_a_window_only_the_newer_status_line_reports_still_shows(self):
+        self.rows(100)
+        self.write("usage-claude.json", {"ts": 200, "rate_limits": {"five_hour": {"used_percentage": 12, "resets_at": 1794009000}}})
+        self.assertEqual(self.view()[0], ("5-hour", 12.0, 200))
+        self.rows(300)
+        self.assertEqual([v[0] for v in self.view()], ["Weekly", "Weekly (Fable)"])
+
+    def test_rolled_over_rows_read_empty_and_junk_is_skipped(self):
+        self.rows(100, self.ROWS + [{"kind": "x"}, "junk"])
+        self.assertEqual([(l.used, l.resets_at) for l in self.p.limits(1796000000)], [(0.0, None), (0.0, None)])
+
+    def test_polls_only_after_use_and_at_most_every_fifteen_minutes(self):
+        self.assertFalse(self.p.claim_usage_poll(10_000))
+        self.line(9_000)
+        self.assertTrue(self.p.claim_usage_poll(10_000))
+        self.assertFalse(self.p.claim_usage_poll(10_001))
+        self.rows(10_002)
+        self.line(10_500)
+        self.assertFalse(self.p.claim_usage_poll(10_600))
+        self.assertTrue(self.p.claim_usage_poll(10_002 + 15 * 60))
+        self.rows(20_000)
+        self.assertFalse(self.p.claim_usage_poll(30_000))
+
+    def test_poll_asks_usage_quietly_and_keeps_its_rows(self):
+        exe = self.home / "claude"
+        args = self.home / "args"
+        report = json.dumps({"type": "assistant", "usage_report": {"rate_limits": {"limits": self.ROWS}}})
+        exe.write_text(f"#!/bin/sh\nprintf '%s\\n' \"$@\" > {args}\necho 'not json'\necho '{report}'\n")
+        exe.chmod(0o755)
+        self.p.poll_usage(str(exe), dict(os.environ))
+        self.assertEqual(json.loads((self.nizam / "usage-claude-rows.json").read_text())["limits"], self.ROWS)
+        argv = args.read_text().splitlines()
+        self.assertEqual(argv[:2], ["-p", "/usage"])
+        for flag in ("--no-session-persistence", "--setting-sources", "--strict-mcp-config"):
+            self.assertIn(flag, argv)
+
+    def test_a_reply_without_rows_keeps_what_was_there(self):
+        self.rows(100)
+        exe = self.home / "claude"
+        exe.write_text("#!/bin/sh\necho '{\"type\": \"result\"}'\n")
+        exe.chmod(0o755)
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.p.poll_usage(str(exe), dict(os.environ))
+        self.assertEqual(json.loads((self.nizam / "usage-claude-rows.json").read_text())["ts"], 100)
+
+
 class AgentMarker(unittest.TestCase):
     def setUp(self):
         self.folder = Path(tempfile.mkdtemp())
