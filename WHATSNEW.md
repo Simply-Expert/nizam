@@ -2,6 +2,23 @@
 
 The newest release is at the top.
 
+## 0.5.0 · 17 Nov 2026
+
+- **Home: everything waiting on you, in one list.** The board opens on a numbered list in the order
+  to look at things: blocked sessions, routines that failed or found something, late and due
+  follow-ups, requests from other agents, then sessions that finished a turn. Beside it: what is
+  working, what routines did in the last 24 hours, and what comes up by the end of tomorrow. Open
+  an item and its page slides over the list.
+- **Park a session and close its window.** `nizam remind 3pm --close`, "remind me at 3 and close
+  this", or *Close its window until then* in the remind box ends the session and closes its
+  Terminal or iTerm tab once its turn is over. It waits under *Later* and resumes in a new window
+  when you open it. Sessions in the Claude app keep their window.
+- **Routines set their own effort.** Add `effort: low | medium | high | xhigh | max` to a routine;
+  without it a routine runs at `medium`, not at whatever level was last saved with `/effort`.
+- **The app starts again after a Python upgrade.** When the Python its environment was built on is
+  gone, Nizam now rebuilds that environment from scratch, instead of leaving links to the old one
+  that kept it broken.
+
 ## 0.4.6 · 17 Nov 2026
 
 - **The badge shows per-model weekly limits, like Fable's.** Your plan can cap a single model each
