@@ -134,9 +134,16 @@ time comes. Nothing is written into the agent's files, and no new session is sta
 
 ```
 nizam remind 1:30pm          # also: 14:00, +45m, in 2h, tomorrow 9am, fri 10:00
+nizam remind 3pm --close     # the same, and close this session's window until then
 nizam remind                 # show this session's reminder
 nizam remind off             # clear it
 ```
+
+Add `--close` only when the user asks for the window to go away too ("remind me at 3 and close
+this", "park this until tomorrow"). The session ends and its terminal tab closes once this turn is
+over, so run it last, then reply with the time and that the session resumes from the board. Nothing
+is lost: the board resumes the conversation in a new window. If the command says the window stays
+open, pass that on.
 
 It finds the current session on its own. Reply with the time it confirms. It clears itself when the
 user writes to the session again, jumps back to it once it is due, or marks it done. It only works

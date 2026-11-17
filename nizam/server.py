@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import reminders, settings, terminal, triage
+from . import home, reminders, routines, settings, terminal, triage
 from .agents import display_path, load_agent
 from .paths import PORT_FILE, ensure_dirs
 from .state import LOOKBACK, Board
@@ -91,7 +91,10 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/board":
             snap = self.board.snapshot()
             t = triage.get()
-            return self._json({**snap, "triage": t.view(snap) if t else {"enabled": False}})
+            view = t.view(snap) if t else {"enabled": False}
+            now = snap["generated_at"]
+            return self._json({**snap, "triage": view,
+                               "home": home.build(snap, view, routines.runs_since(now - home.RECENT_SECS), now)})
         if u.path == "/api/settings":
             return self._json(settings.read(self.board))
         if u.path.startswith("/api/agents/areas"):
@@ -142,10 +145,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": "This session leaves the board before then; add a follow-up instead"}, 400)
                 if at is not None and s["bucket"] == "done":
                     b.persist.reopen(sid)
-                b.persist.remind(sid, at)
+                closing = None
+                if at is not None and body.get("close") and s["live"] and s["pid"]:
+                    if not terminal.closable(s["pid"]):
+                        closing = "no"
+                    else:
+                        closing = "now" if s["bucket"] in ("inbox", "later") else "after_turn"
+                b.persist.remind(sid, at, close=closing in ("now", "after_turn"))
                 b.invalidate()
                 return self._json({"ok": True, "at": at, "label": at and reminders.label(at, now),
-                                   "spoken": at and reminders.spoken(at, now)})
+                                   "spoken": at and reminders.spoken(at, now), "closing": closing})
             elif action == "open":
                 ok = terminal.open_session(s, term, bool(body.get("paste")), terminal.remote_for(prefs))
                 if ok and s["remind_due"]:
@@ -237,7 +246,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
 
         if parts[:2] == ["api", "routines"] and len(parts) == 3:
-            from . import routines
             r = next((x for x in b.snapshot()["routines"] if x["id"] == body.get("id")), None)
             if not r:
                 return self._json({"error": "unknown routine"}, 404)

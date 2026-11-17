@@ -36,7 +36,8 @@ def ensure_venv() -> bool:
     if not seed:
         print("no python3 found for the menu-bar app venv"); return False
     print(f"→ creating {VENV} and installing PyObjC (one-time)…")
-    subprocess.run([seed, "-m", "venv", str(VENV)], check=False)
+    # --clear: a venv whose Python was upgraded away keeps dangling links that a plain rebuild leaves in place.
+    subprocess.run([seed, "-m", "venv", "--clear", str(VENV)], check=False)
     subprocess.run([str(VENV_PY), "-m", "pip", "install", "--quiet",
                     "pyobjc-framework-Cocoa", "pyobjc-framework-WebKit",
                     "pyobjc-framework-UserNotifications"], check=False)
@@ -386,7 +387,7 @@ def _api(path: str, body: dict | None = None) -> dict:
         return json.loads(e.read() or b"{}")
 
 
-def remind_cmd(when: list[str], session: str | None) -> int:
+def remind_cmd(when: list[str], session: str | None, close: bool = False) -> int:
     import urllib.error
     sid = session or providers.current_session_id()
     if not sid:
@@ -408,12 +409,20 @@ def remind_cmd(when: list[str], session: str | None) -> int:
         print(f"{s['title']}: " + (f"reminder {s['remind_label']}" + (" (due now)" if s["remind_due"] else "")
                                    if s["remind_at"] else "no reminder"))
         return 0
-    r = _api(f"/api/sessions/{s['id']}/remind", {"when": " ".join(when)})
+    r = _api(f"/api/sessions/{s['id']}/remind", {"when": " ".join(when), "close": close})
     if r.get("error"):
         print(r["error"], file=sys.stderr)
         return 1
     print(f"the board will bring '{s['title']}' back to the user {r['spoken']}" if r["at"]
           else f"reminder cleared for '{s['title']}'")
+    note = {"now": "its window closes in a moment; the session resumes from the board",
+            "after_turn": "its window closes once this turn ends, so make this reply the last one; "
+                          "the session resumes from the board",
+            "no": "its window stays open: it runs in the Claude app, where Nizam cannot close it"}
+    if r.get("closing"):
+        print(note[r["closing"]])
+    elif close and r["at"]:
+        print("it has no open window to close")
     return 0
 
 
@@ -464,6 +473,8 @@ def main(argv: list[str] | None = None) -> int:
     rm = sub.add_parser("remind", help="bring this session back to you at a time: <when> | off | (no argument: show)")
     rm.add_argument("when", nargs="*", help="1:30pm, 14:00, +45m, in 2h, tomorrow 9am, fri 10:00, or off")
     rm.add_argument("--session", help="a session id or its first characters (default: the session this runs in)")
+    rm.add_argument("--close", action="store_true",
+                    help="also end the session and close its terminal window until then")
     fu = sub.add_parser("followups", help="hour [<time>]: when follow-ups without a time come up (default 10:00)")
     fu.add_argument("action", choices=("hour",))
     fu.add_argument("when", nargs="*", help="10am, 20:00, 8pm")
@@ -496,7 +507,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "request":
         return request_cmd(a.action, a.args)
     if a.cmd == "remind":
-        return remind_cmd(a.when, a.session)
+        return remind_cmd(a.when, a.session, a.close)
     if a.cmd == "followups":
         return followups_cmd(a.action, a.when)
     if a.cmd == "telegram":

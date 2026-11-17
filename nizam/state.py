@@ -27,6 +27,7 @@ from . import routines as routines_mod
 from . import providers
 from . import reminders as reminders_mod
 from . import remote as remote_mod
+from . import terminal as terminal_mod
 from .providers.base import ENDED, NEEDS, ACTIVITY, TURN_DONE, WORKING, Runtime, Transcript
 from .paths import EVENTS_FILE, STATE_FILE, ensure_dirs
 
@@ -38,6 +39,7 @@ DONE_MAX = 40
 EVENTS_KEEP = LOOKBACK         # an event outside the transcript window can't change the board
 ROTATE_EVERY = 6 * 3600
 SLOW_BUILD_SECS = 1.0
+CLOSE_SETTLE = 5               # a turn that just ended may still be writing its last lines
 
 _QUESTION_PHRASES = ("should i", "want me to", "would you like", "do you want", "let me know",
                      "which would you prefer", "shall i", "ok to proceed", "does that work")
@@ -215,14 +217,19 @@ class Persisted:
                 stars.pop(sid, None)
             self.save()
 
-    def remind(self, sid: str, at: float | None) -> None:
+    def remind(self, sid: str, at: float | None, close: bool = False) -> None:
         with self.lock:
             reminders = self.data.setdefault("reminders", {})
             if at is None:
                 reminders.pop(sid, None)
             else:
-                reminders[sid] = {"at": at, "set": time.time()}
+                reminders[sid] = {"at": at, "set": time.time(), **({"close": True} if close else {})}
             self.save()
+
+    def close_settled(self, sid: str) -> None:
+        with self.lock:
+            if self.data.get("reminders", {}).get(sid, {}).pop("close", None):
+                self.save()
 
     def set_pref(self, key: str, value) -> None:
         with self.lock:
@@ -431,6 +438,13 @@ class Board:
             asks = _looks_like_question(t.last_assistant_text.strip())
             bucket, label, detail = self._classify(now, t, rt, h, live, last_activity, waiting, asks)
             remind_label = reminders_mod.label(remind["at"], now) if remind else None
+            if remind and remind.get("close"):
+                if not live or now >= remind["at"]:
+                    self.persist.close_settled(sid)
+                elif bucket == "inbox" and rt and rt.status == "idle" and now - last_activity >= CLOSE_SETTLE:
+                    # One attempt: a window that will not close must not be retried on every build.
+                    self.persist.close_settled(sid)
+                    threading.Thread(target=self._close, args=(rt.pid,), daemon=True).start()
             if remind and now >= remind["at"]:
                 if bucket != "needs":
                     bucket, label = "needs", "Reminder"
@@ -473,6 +487,7 @@ class Board:
                 "remind_at": remind["at"] if remind else None,
                 "remind_label": remind_label,
                 "remind_due": bool(remind and now >= remind["at"]),
+                "remind_close": bool(remind and remind.get("close")),
                 "hooked": h is not None,
             })
         order = {"needs": 0, "working": 1, "inbox": 2, "later": 3, "closed": 4, "done": 5}
@@ -520,6 +535,10 @@ class Board:
         return {"generated_at": now, "agents": sorted(agents.values(), key=lambda a: a["display_name"].lower()),
                 "sessions": sessions, "limits": limits, "followups": followups, "routines": routines, "requests": requests, "prefs": self.persist.data["prefs"],
                 "agent_order": self.persist.data.get("agent_order", [])}
+
+    def _close(self, pid: int) -> None:
+        terminal_mod.close_session(pid)
+        self.invalidate()
 
     def _mark_in_session(self, followups: list[dict], sessions: list[dict], agents: set[str]) -> None:
         """Kept on the list rather than hidden: the session may end with the work unfinished."""

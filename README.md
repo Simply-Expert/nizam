@@ -125,6 +125,13 @@ last message was wrong too often; you are the only one who knows a task is over.
 
 - **Badge and menu bar**: live counts. Click for the board, right-click for options. The badge is
   draggable and exists because a full menu bar on a notched MacBook hides new status items.
+- **Home**: everything that waits on you, as one numbered list in the order to look at it: blocked
+  sessions, routines that failed or found something, follow-ups that are late or due, requests from
+  other agents, then sessions that finished a turn. A session card jumps to its terminal; the others
+  open beside the list, and a follow-up starts its session from the card. To the side: what is
+  working, what routines did in the last 24 hours, and what comes up by the end of tomorrow. With
+  *Check first* on in Settings, each session card also says what it needs from you and Claude orders
+  the sessions.
 - **Board**: agents on the left (pin, rename, drag to reorder via right-click), the selected agent's
   sessions in the middle with area chips, and the full last message on the right.
 - **Keep it open**: the board closes when you click away. The 📌 next to the Nizam name (or *Keep
@@ -158,6 +165,9 @@ last message was wrong too often; you are the only one who knows a task is over.
   Writing to the session, jumping back to it once it is due, or marking it done clears the reminder.
   Inside a session you can say "remind me about this at 1:30" and the agent runs
   `nizam remind 1:30pm`.
+  Tick **Close its window until then** (or say "remind me at 3 and close this") to also end the
+  session and close its terminal tab, once its turn is over. It stays under *Later* and resumes in a
+  new window when you open it. Sessions in the Claude app keep their window.
 - Keys: `j`/`k` move, `Enter` jumps, `d` marks done, `s` stars, `z` sets a reminder, `n` starts a session, `Esc` closes.
 - Notifications are off until you turn them on in Settings (or right-click the badge and choose
   *Notifications*), then allow Nizam when macOS asks. They fire when a session newly needs you, and when a follow-up
@@ -187,6 +197,7 @@ finance") or when you type the command:
 /nizam followup list
 /nizam followup done banner
 /nizam remind 1:30pm                # bring this session back at 1:30 (Later, then Needs you)
+/nizam remind 3pm --close           # the same, and close this window until then
 /nizam routine new weekly-digest    # routines/weekly-digest.md + its schedule
 /nizam routine migrate nightly-scan # from a hand-made launchd job or cron line
 /nizam routine list

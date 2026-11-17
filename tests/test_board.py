@@ -322,6 +322,48 @@ class Reminders(BoardCase):
         self.assertEqual(self.row()["bucket"], "done")
         self.assertNotIn(SID, self.board.persist.data["reminders"])
 
+    def closes(self):
+        with mock.patch.object(state.terminal_mod, "close_session") as close, \
+             mock.patch.object(state.threading, "Thread", side_effect=lambda target, args, daemon: mock.Mock(
+                 start=lambda: target(*args))):
+            s = self.row()
+        return s, close
+
+    def test_closing_waits_for_the_turn_to_end(self):
+        self.chat(age=30); self.live("busy", age=30)
+        self.board.persist.remind(SID, self.now + 3600, close=True)
+        s, close = self.closes()
+        close.assert_not_called()
+        self.assertTrue(s["remind_close"])
+        self.live("idle", age=2)
+        self.assertFalse(self.closes()[1].called)
+        self.live("idle", age=30)
+        s, close = self.closes()
+        close.assert_called_once_with(os.getpid())
+        self.assertEqual(s["bucket"], "later")
+        self.assertFalse(self.closes()[1].called)
+
+    def test_a_question_to_you_keeps_the_window(self):
+        self.chat(age=30); self.live(age=30)
+        self.event("Notification", age=20, notification_type="permission_prompt", message="Bash?")
+        self.board.persist.remind(SID, self.now + 3600, close=True)
+        self.assertFalse(self.closes()[1].called)
+
+    def test_a_plain_reminder_never_closes(self):
+        self.chat(age=30); self.live(age=30)
+        self.board.persist.remind(SID, self.now + 3600)
+        s, close = self.closes()
+        close.assert_not_called()
+        self.assertFalse(s["remind_close"])
+
+    def test_a_due_reminder_no_longer_closes(self):
+        self.chat(age=30); self.live("busy", age=30)
+        self.board.persist.remind(SID, self.now - 60, close=True)
+        self.live("idle", age=30)
+        s, close = self.closes()
+        close.assert_not_called()
+        self.assertFalse(s["remind_close"])
+
     def test_later_sits_above_closed_sorted_by_time(self):
         other, idle = "22222222-2222-4222-8222-222222222222", "44444444-4444-4444-8444-444444444444"
         self.chat(); self.chat(sid=other, age=500); self.chat(sid=idle, age=5)

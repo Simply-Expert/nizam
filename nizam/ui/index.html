@@ -132,9 +132,13 @@ aside .foot { margin-top: auto; padding: 8px; display: flex; flex-direction: col
 .onboard p { color: var(--muted); margin: 0 0 12px; }
 .onboard code { font-family: var(--mono); font-size: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; color: var(--text); }
 
-/* ---- check first: one wide column, no detail pane ---- */
-body.triage .detail { display: none; }
-@media (min-width: 761px) { body.triage .list { grid-column: 2 / 4; border-right: 0; } }
+/* ---- home: one wide column; an item's page slides over it ---- */
+body.home .detail:not(.open) { display: none; }
+@media (min-width: 761px) {
+  body.home .list { grid-column: 2 / 4; border-right: 0; }
+  body.home .detail.open { position: fixed; top: 0; right: 0; bottom: 0; width: min(620px, 60vw); background: var(--bg); border-left: 1px solid var(--line); box-shadow: -12px 0 40px rgba(0,0,0,.25); z-index: 5; }
+  body.home .detail .back { display: inline-block; }
+}
 aside .row.tri .newo { color: var(--accent); font-size: 9px; animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 4px var(--accent-bg); } }
 .tview { max-width: 920px; margin: 0 auto; padding: 22px 24px 48px; }
@@ -142,6 +146,7 @@ aside .row.tri .newo { color: var(--accent); font-size: 9px; animation: pulse 1.
 .tview .thead h2 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); font-weight: 600; }
 .tview .thead .n { color: var(--muted); font-size: 12px; }
 .tview .thead .sp { flex: 1; }
+.tview .chips { margin: 0 0 12px; }
 .tview .reorder { padding: 3px 12px; font-size: 12px; border-radius: 999px; animation: pulse 1.6s ease-in-out infinite; }
 .tview .keys { color: var(--muted); font-size: 12px; margin-top: 18px; }
 .tview kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
@@ -163,13 +168,59 @@ aside .row.tri .newo { color: var(--accent); font-size: 9px; animation: pulse 1.
 .item.tri.stale .t, .item.tri.stale .nd { opacity: .6; }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
 .pill.needs { background: var(--needs-bg); color: var(--needs); } .pill.inbox { background: var(--inbox-bg); color: var(--inbox); }
+.pill.working { background: var(--working-bg); color: var(--working); } .pill.rq { background: var(--accent-bg); color: var(--accent); } .pill.fu { background: var(--due-bg); color: var(--due); }
+.item.tri .nd.why { color: var(--needs); }
+.item.tri { position: relative; }
+.item.tri::after { content: attr(data-cue); position: absolute; right: 16px; bottom: 9px; font-size: 12px; color: var(--muted); opacity: .6; }
+.item.tri:hover::after, .item.tri.on::after { content: attr(data-go) " " attr(data-cue); color: var(--accent); opacity: 1; }
+.item.tri .nd { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.item.tri.brief .nd { -webkit-line-clamp: 1; font-size: 13px; color: var(--muted); }
+.item.tri.brief { padding: 10px 16px; }
+.item.tri .side .opt { margin-top: 2px; }
 .tchip { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .tchip.high { color: var(--needs); border-color: var(--needs); } .tchip.quick { color: var(--inbox); border-color: var(--inbox); }
 .tchip.deep { color: var(--working); border-color: var(--working); } .tchip.new { color: var(--accent); border-color: var(--accent); }
 button.opt { font-size: 12px; padding: 3px 10px; border-radius: 8px; background: var(--bg); }
 button.opt:hover { border-color: var(--accent); color: var(--accent); }
-.tview .wline { margin-top: 22px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 0; }
-.tview .wline b { color: var(--working); font-weight: 600; margin-right: 10px; }
+.tview .wline { margin-top: 14px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 0; }
+.tview .wline b { font-weight: 600; margin-right: 10px; }
+.tview .wline a.bad { color: var(--needs); }
+.tview .strips { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 6px; }
+.tview .strips .wline { display: block; margin-top: 18px; }
+.tview .strips .wline b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; margin: 0 0 6px; color: var(--muted); }
+.tview .strips .wline.working b { color: var(--working); }
+.tview .strips .wline .sum { display: block; margin: 0 0 4px; font-size: 12px; }
+.tview .strips .wline a { display: block; padding: 3px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tview .strips .wline a + a::before { content: none; }
+.tview .strips .wline a.srow { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 1px 8px; align-items: baseline; padding: 5px 0; white-space: normal; }
+.tview .strips .wline a.srow:hover { text-decoration: none; }
+.tview .strips .wline a.srow:hover .nm { color: var(--accent); }
+.tview .strips .wline a.srow.up { grid-template-columns: 46px minmax(0, 1fr); }
+.tview .strips .srow .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tview .strips .srow .nm .muted { font-size: 12px; margin-left: 4px; }
+.tview .strips .srow .mk { color: var(--muted); font-size: 11px; text-align: center; }
+.tview .strips .srow.failing .mk, .tview .strips .srow.found .mk { color: var(--needs); }
+.tview .strips .srow.running .mk { color: var(--working); }
+.tview .strips .srow.clean .mk { color: var(--inbox); }
+.tview .strips .srow.past .nm, .tview .strips .srow.clean .nm, .tview .strips .srow.tog .nm, .tview .strips .srow.up.routine .nm { color: var(--muted); }
+.tview .strips .srow .fd { color: var(--due); font-size: 9px; }
+.tview .strips .srow .rt, .tview .strips .srow .tm { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tview .strips .srow .sm { grid-column: 2 / -1; color: var(--muted); font-size: 12px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tview .strips .srow .sm.one { -webkit-line-clamp: 1; }
+.tview .strips .srow.failing .sm, .tview .strips .srow.found .sm { color: var(--text); }
+.tview .strips .wline .sum.more { margin: 4px 0 0; }
+.tview .strips .wline .sum.day { margin: 8px 0 2px; }
+.rbar { display: flex; gap: 2px; height: 6px; border-radius: 3px; overflow: hidden; margin: 2px 0 8px; }
+.rleg { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; margin-bottom: 8px; }
+.rleg i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
+.rbar i.ok, .rleg i.ok { background: var(--inbox); } .rbar i.quiet, .rleg i.quiet { background: var(--muted); opacity: .45; }
+.rbar i.found, .rleg i.found { background: var(--working); } .rbar i.failed, .rleg i.failed { background: var(--needs); }
+.rbar i.running, .rleg i.running { background: var(--accent); }
+@media (min-width: 1180px) {
+  .tview { max-width: 1320px; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 0 32px; align-items: start; }
+  .tview .strips { position: sticky; top: 22px; margin-top: 26px; border-top: 0; border-left: 1px solid var(--line); padding: 0 0 0 22px; }
+  .tview .strips .wline:first-child { margin-top: 0; }
+}
 .tview .wline a { color: var(--text); cursor: pointer; }
 .tview .wline a:hover { color: var(--accent); text-decoration: underline; }
 .tview .wline a + a::before { content: "·"; color: var(--muted); margin: 0 8px; display: inline-block; }
@@ -238,6 +289,8 @@ input.sw:checked::after { left: 16px; }
 .modal .cmd { font-family: var(--mono); font-size: 11px; color: var(--muted); background: var(--bg); padding: 6px 8px; border-radius: 6px; word-break: break-all; }
 .picks { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 #remErr { color: var(--needs); font-size: 12px; }
+#remCloseRow { display: flex; align-items: center; gap: 6px; font-size: 12px; text-transform: none; letter-spacing: 0; cursor: pointer; }
+#remClose { width: auto; padding: 0; margin: 0; }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--needs); color: #fff; padding: 8px 14px; border-radius: 8px; z-index: 30; display: none; }
 
 /* ---- narrow: single list, detail slides over ---- */
@@ -273,6 +326,7 @@ input.sw:checked::after { left: 16px; }
     <h3>Come back to this session at…</h3>
     <div class="picks"><button data-when="+30m">In 30 min</button><button data-when="+1h">In 1 hour</button><button data-when="+3h">In 3 hours</button><button data-when="tomorrow 9am">Tomorrow 9 AM</button></div>
     <div class="f"><input id="remInput" type="text" placeholder="1:30pm · 14:00 · +45m · tomorrow 9am · fri 10:00" spellcheck="false"><div class="note" id="remErr"></div></div>
+    <label id="remCloseRow"><input id="remClose" type="checkbox"> Close its window until then</label>
     <div class="foot"><button id="remClear">Clear reminder</button><span style="flex:1"></span><button id="remCancel">Cancel</button><button class="primary" id="remOk">Set</button></div>
   </div>
 </div>
@@ -321,9 +375,10 @@ const DOT = {needs: '●', working: '◐', inbox: '●', closed: '○', later: '
 function load(k, d) { try { const v = localStorage.getItem('nizam.'+k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function save(k, v) { try { localStorage.setItem('nizam.'+k, JSON.stringify(v)); } catch {} }
 
-let DATA = null, SEL = load('sel', {agent: null, area: null}), CUR = new URLSearchParams(location.search).get('select'), DRAG = null;
+let DATA = null, SEL = load('sel', {home: true}), CUR = new URLSearchParams(location.search).get('select'), DRAG = null;
 let showDone = load('showDone', false), folded = load('folded', []), _lastKey = null, detailOpen = !!CUR;
 if (CUR) SEL = {agent: null, area: null};
+if (SEL.triage) SEL = {home: true};
 const NATIVE = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nizam;
 let SETTINGS = new URLSearchParams(location.search).get('settings') === '1', SET = null, _setKey = null;
 function nizamSelect(id) { SEL = {agent: null, area: null}; CUR = id; detailOpen = true; SETTINGS = false; refresh(true); }
@@ -394,11 +449,11 @@ const ONBOARD = `<div class="onboard"><h2>No agents yet</h2><p>Every folder you 
 function render() {
   if (!DATA) return;
   document.body.classList.toggle('settings', SETTINGS);
-  if (SETTINGS) document.body.classList.remove('triage');
+  if (SETTINGS) document.body.classList.remove('home');
   if (SETTINGS) { renderSide(); renderSettings(); return; }
   if (!DATA.agents.length) { $('#side').innerHTML = `<div class="brand">Nizam <span class="ar">نظام</span></div>`; $('#list').innerHTML = ONBOARD; $('#detail').innerHTML = ''; $('#detail').classList.remove('open'); NAV = []; return; }
-  if ((SEL.agent && !agentOf(SEL.agent)) || (SEL.triage && !triageOn())) SEL = {agent: null, area: null};
-  document.body.classList.toggle('triage', !!SEL.triage);
+  if (SEL.agent && !agentOf(SEL.agent)) SEL = {home: true};
+  document.body.classList.toggle('home', !!SEL.home);
   renderSide(); renderList(); renderDetail();
 }
 
@@ -406,8 +461,9 @@ function render() {
 function renderSide() {
   const all = visible(DATA.sessions);
   let h = `<div class="brand">Nizam <span class="ar">نظام</span><span class="sp"></span><button class="quiet setbtn ${SETTINGS?'on':''}" id="setBtn" title="Settings (⌘,)" aria-label="Settings">${GEAR}</button>${NATIVE?`<button class="quiet setbtn ${DATA.prefs.board_pinned?'on':''}" id="pinBtn" aria-label="Keep board open" title="${DATA.prefs.board_pinned?'Unpin: back to a popover that closes on click-away':'Pin: keep the board open as a window'}">${PIN}</button>`:''}<button class="primary" id="newBtn" title="New session (n)">＋</button></div>`;
-  if (triageOn()) h += `<div class="row tri ${SEL.triage&&!SETTINGS?'on':''}" data-tri="1" title="Waiting sessions in the order to check them"><span class="name">Check first</span>${DATA.triage.reorder?'<span class="newo" title="A new order is ready">●</span>':''}<span class="cnt">${DATA.triage.items.length?`<b class="i">${DATA.triage.items.length}</b>`:''}</span></div>`;
-  h += `<div class="row ${!SEL.agent&&!SEL.triage&&!SETTINGS?'on':''}" data-a=""><span class="name">All agents</span>${badges(countsFor(all, null), lateCount(null), requestCount(null))}</div>`;
+  const waitingN = homeItems().length;
+  h += `<div class="row tri ${SEL.home&&!SETTINGS?'on':''}" data-home="1" title="Everything that waits on you, in the order to look at it"><span class="name">Home</span>${triageOn()&&DATA.triage.reorder?'<span class="newo" title="A new order is ready">●</span>':''}<span class="cnt">${waitingN?`<b class="q">${waitingN}</b>`:''}</span></div>`;
+  h += `<div class="row ${!SEL.agent&&!SEL.home&&!SETTINGS?'on':''}" data-a=""><span class="name">All agents</span>${badges(countsFor(all, null), lateCount(null), requestCount(null))}</div>`;
   h += `<div class="sec">Agents</div>`;
   const agents = sortedAgents();
   for (const a of agents) {
@@ -417,9 +473,8 @@ function renderSide() {
   }
   h += `<div class="foot"><label class="chk"><input type="checkbox" id="showDone" ${showDone?'checked':''}> Show done</label></div>`;
   const side = $('#side'); side.innerHTML = h;
-  side.querySelectorAll('[data-a]').forEach(el => el.addEventListener('click', () => { SEL = {agent: el.dataset.a || null, area: null}; save('sel', SEL); CUR = null; SETTINGS = false; render(); }));
-  const tri = side.querySelector('[data-tri]');
-  if (tri) tri.addEventListener('click', () => { SEL = {agent: null, area: null, triage: true}; save('sel', SEL); CUR = null; SETTINGS = false; FRESH = true; render(); });
+  side.querySelectorAll('[data-a]').forEach(el => el.addEventListener('click', () => { SEL = {agent: el.dataset.a || null, area: null}; save('sel', SEL); CUR = null; detailOpen = false; SETTINGS = false; render(); }));
+  side.querySelector('[data-home]').addEventListener('click', goHome);
   $('#newBtn').addEventListener('click', () => openModal());
   $('#setBtn').addEventListener('click', () => SETTINGS ? closeSettings() : openSettings());
   if (NATIVE) $('#pinBtn').addEventListener('click', () => NATIVE.postMessage({pin: !DATA.prefs.board_pinned}));
@@ -461,6 +516,19 @@ async function renameAgent(root) {
   await api('/api/agents/set', {root, name});
   refresh(true);
 }
+function sessionCtx(x, y, s) {
+  const c = $('#ctx');
+  c.innerHTML = `<div data-do="open">${s.live ? 'Jump to' : 'Resume'}</div><div data-do="remind">${s.remind_at ? 'Change reminder…' : 'Remind me…'}</div><div data-do="done">Mark done</div>`;
+  c.style.left = Math.min(x, window.innerWidth - 180) + 'px'; c.style.top = y + 'px';
+  c.classList.add('open');
+  c.querySelectorAll('[data-do]').forEach(el => el.addEventListener('click', async () => {
+    c.classList.remove('open');
+    if (el.dataset.do === 'open') return openSession(s.id);
+    if (el.dataset.do === 'remind') return remindBox(s);
+    await api(`/api/sessions/${s.id}/done`, {});
+    refresh(true);
+  }));
+}
 function openCtx(x, y, root) {
   const a = agentOf(root); if (!a) return;
   const c = $('#ctx');
@@ -483,7 +551,11 @@ function openCtx(x, y, root) {
     refresh(true);
   }));
 }
-document.addEventListener('click', e => { if (!e.target.closest('#ctx')) $('#ctx').classList.remove('open'); });
+document.addEventListener('click', e => {
+  const c = $('#ctx');
+  if (!c.classList.contains('open') || e.target.closest('#ctx')) return;
+  c.classList.remove('open'); e.stopPropagation(); e.preventDefault();
+}, true);
 document.addEventListener('click', e => {
   // The app's web view opens no new windows; the Mac's browser (or Telegram) opens the link instead.
   const a = e.target.closest('a[target="_blank"]');
@@ -538,53 +610,138 @@ function sessionRow(s) {
   return `<div class="item ${s.bucket} ${s.starred?'starred':''} ${CUR===s.id?'on':''}" data-id="${s.id}" title="Double-click or Enter to ${s.live?'jump to':'resume'}"><span class="dot ${s.bucket}">${dotFor(s)}</span><span class="t">${esc(s.title)}</span><span class="ago">${bg}${rem}<span class="agotxt">${esc(s.ago)}</span>${s.bucket==='closed'?`<button class="rowdone" data-done="${s.id}" title="Mark done">Done ✓</button>`:''}</span>${where?`<span class="where">${where}</span>`:''}${p}</div>`;
 }
 const KIND = {decide: 'decide', approve: 'approve', answer: 'answer', review: 'review', unblock: 'unblock', fyi: 'FYI'};
-function triageRow(i, n, s) {
-  const c = i.card;
+function goHome() { SEL = {home: true}; save('sel', SEL); CUR = null; detailOpen = false; SETTINGS = false; FRESH = true; render(); }
+function homeItems() {
+  const maps = {session: DATA.sessions, routine: DATA.routines || [], followup: DATA.followups || [], request: DATA.requests || []};
+  return ((DATA.home || {}).queue || []).map(q => ({kind: q.kind, x: (maps[q.kind] || []).find(v => v.id === q.id)})).filter(i => i.x);
+}
+function firstLine(t) { return (t || '').split('\n').map(l => l.trim()).find(Boolean) || ''; }
+function sessionCard(s, i) {
+  const c = i && i.card;
   const chips = c ? [`<span class="tchip">${esc(KIND[c.kind] || c.kind)}</span>`, `<span class="tchip ${esc(c.effort)}">${esc(c.effort)}</span>`,
                      c.stakes === 'high' ? '<span class="tchip high">high stakes</span>' : ''].join('') : '';
-  const state = i.building ? '<span class="tchip">reading…</span>' : i.stale ? '<span class="tchip" title="The session moved on since this was written">out of date</span>' : '';
+  const state = !i ? '' : i.building ? '<span class="tchip">reading…</span>' : i.stale ? '<span class="tchip" title="The session moved on since this was written">out of date</span>' : '';
   const replies = (c && c.options || []).map(o => `<button class="opt" data-reply="${esc(o)}" title="Copy, then jump to the session">${esc(o)}</button>`).join('');
-  return `<div class="item tri ${s.bucket} ${i.stale?'stale':''} ${CUR===s.id?'on':''}" data-id="${s.id}" title="Click or Enter to jump to it">
+  const blocked = !c && s.bucket === 'needs' && s.detail;
+  return {cls: `${s.bucket} ${i && i.stale ? 'stale' : ''}`, hint: `Click or Enter to ${s.live ? 'jump to it' : 'resume it'}`, isNew: i && i.new,
+          title: c ? c.headline : s.title, nd: c ? c.needs : blocked ? s.detail : i && i.building ? 'Reading the session…' : lastPara(s.preview), why: blocked,
+          note: i && i.why, chips: chips + state + replies,
+          side: `<span class="pill ${s.bucket}">${esc(s.label)}</span><span class="agotxt">${esc(s.ago)}</span><button class="rowdone" data-done="${s.id}" title="Mark done (d)">Done ✓</button>`};
+}
+function routineCard(r) {
+  const found = r.attention && !r.failing ? r.attention : null, run = found || r.last || {};
+  return {cls: 'needs', hint: 'Click or Enter to open it', title: r.name, nd: r.error || firstLine(run.summary) || '(no output)', why: true, chips: '',
+          side: `<span class="pill needs">${found ? 'Routine found something' : 'Routine ' + (RT_STATUS[r.status] || '').toLowerCase()}</span><span>${esc(run.when || '')}</span><button class="opt" data-ack="${r.id}" title="Stop counting this; the next run that fails or finds something counts again">Dismiss</button>`};
+}
+function followupCard(f) {
+  return {cls: `brief ${f.due === 'overdue' ? 'needs' : ''}`, hint: 'Click or Enter to read it all', title: f.title, nd: firstLine(f.body), chips: '',
+          side: `<span><span class="ago due ${f.due}">${esc(f.when)}</span> <span class="pill fu">◆ Follow-up</span></span><button class="opt" data-fustart="${f.id}" title="Open a session here with this follow-up as the first prompt">Start session</button>`};
+}
+function requestCard(q) {
+  const reply = q.kind === 'reply';
+  return {cls: 'brief', hint: 'Click or Enter to read it', title: q.title, nd: firstLine((q.body || '').split('\n').slice(1).join('\n')),
+          chips: '', side: `<span class="pill rq">${reply ? 'Reply' : 'Request'} from ${esc(q.from)}</span><span class="ago rq ${q.age}">${esc(q.ago)}</span>`};
+}
+function homeCard(n, kind, x, tri) {
+  const c = kind === 'session' ? sessionCard(x, tri) : kind === 'routine' ? routineCard(x) : kind === 'followup' ? followupCard(x) : requestCard(x);
+  const a = agentOf(x.agent);
+  return `<div class="item tri ${c.cls} ${CUR===x.id?'on':''}" data-id="${x.id}" data-kind="${kind}" data-cue="${kind === 'session' ? '↗' : '›'}" data-go="${kind === 'session' ? (x.live ? 'Jump to' : 'Resume') : kind === 'request' ? 'Read' : 'Details'}" title="${c.hint}">
     <span class="num">${n + 1}</span>
-    <span class="who"><b>${esc(s.agent_name)}</b>${s.area ? ' › ' + esc(s.area) : ''}${i.new ? ' <span class="tchip new">new</span>' : ''}</span>
-    <span class="t">${esc(c ? c.headline : s.title)}</span>
-    <span class="nd">${esc(c ? c.needs : i.building ? 'Reading the session…' : lastPara(s.preview))}</span>
-    ${i.why ? `<span class="tw">${esc(i.why)}</span>` : ''}
-    ${chips || state || replies ? `<span class="tchips">${chips}${state}${replies}</span>` : ''}
-    <span class="side"><span class="pill ${s.bucket}">${esc(s.label)}</span><span class="agotxt">${esc(s.ago)}</span><button class="rowdone" data-done="${s.id}" title="Mark done (d)">Done ✓</button></span></div>`;
+    <span class="who"><b>${esc(a ? a.display_name : '')}</b>${x.area ? ' › ' + esc(x.area) : ''}${c.isNew ? ' <span class="tchip new">new</span>' : ''}</span>
+    <span class="t">${esc(c.title)}</span>
+    ${c.nd ? `<span class="nd ${c.why ? 'why' : ''}">${esc(c.nd)}</span>` : ''}
+    ${c.note ? `<span class="tw">${esc(c.note)}</span>` : ''}
+    ${c.chips ? `<span class="tchips">${c.chips}</span>` : ''}
+    <span class="side">${c.side}</span></div>`;
 }
-function workingLink(s) {
-  const c = cardOf(s.id);
-  return `<a data-jump="${s.id}" title="${esc(c ? c.headline : s.title)} · ${esc(s.ago)}">${esc(s.agent_name)}${s.area ? ' › ' + esc(s.area) : ''}</a>`;
+const RUN_STATE = {failing: ['✕', 'Failing'], found: ['●', 'Found something for you'], running: ['◐', 'Running now'], recovered: ['✓', 'Failed earlier, fine now'], handled: ['✓', 'Found something, dismissed']};
+const RUN_SEG = [['ok', 'completed'], ['quiet', 'nothing new'], ['found', 'found something'], ['failed', 'failed'], ['running', 'running']];
+function agoWords(ts) { const m = Math.max(0, Math.round(Date.now() / 60000 - ts / 60)); return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`; }
+function soonShort(ts) {
+  const m = Math.round(ts / 60 - Date.now() / 60000);
+  return m < 60 ? `in ${Math.max(1, m)}m` : new Date(ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: false});
 }
-function renderTriage() {
-  const T = DATA.triage, byId = Object.fromEntries(DATA.sessions.map(s => [s.id, s]));
-  if (FRESH && T.reorder) { FRESH = false; applyOrder(); return; }
-  FRESH = false;
-  const items = T.items.filter(i => byId[i.id]);
+function runRow(i, name) {
+  const [mark, label] = RUN_STATE[i.state], past = ['recovered', 'handled'].includes(i.state);
+  const note = i.state === 'recovered' ? `Failed ${agoWords(i.at)}, ${i.since} good run${i.since > 1 ? 's' : ''} since`
+    : i.state === 'handled' ? `Found something ${agoWords(i.at)}, dismissed` : i.summary;
+  return `<a class="srow ${i.state} ${past ? 'past' : ''}" data-open="${i.id}" title="${label}${past && i.summary ? ': ' + esc(i.summary) : ''}">
+    <span class="mk">${mark}</span><span class="nm">${esc(i.name)} <span class="muted">${esc(name(i.agent))}</span></span>
+    <span class="rt">${past ? '' : agoWords(i.at)}</span>${note ? `<span class="sm">${esc(note)}</span>` : ''}</a>`;
+}
+let cleanOpen = load('cleanOpen', false);
+function homeStrips() {
+  const H = DATA.home || {}, R = H.recent || {}, name = root => { const a = agentOf(root); return a ? a.display_name : ''; };
   const working = DATA.sessions.filter(s => s.bucket === 'working');
-  NAV = items.map(i => i.id);
-  if (!NAV.includes(CUR)) CUR = NAV[0] || null;
-  let h = `<div class="tview"><div class="thead"><h2>Check in this order</h2><span class="n">${items.length}</span><span class="sp"></span>${T.reorder ? '<button class="primary reorder" data-reorder="1" title="Put the list in the newest order (r)">New order ready · r</button>' : ''}</div>`;
-  h += items.map((i, n) => triageRow(i, n, byId[i.id])).join('') || `<div class="empty">Nothing is waiting on you</div>`;
-  if (working.length) h += `<div class="wline"><b>◐ Working · ${working.length}</b>${working.map(workingLink).join('')}</div>`;
-  h += `<div class="keys"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>⏎</kbd> or click to jump · <kbd>1</kbd>–<kbd>9</kbd> jump to · <kbd>d</kbd> done · <kbd>z</kbd> remind · a reply button copies it, then jumps</div></div>`;
+  let h = '';
+  if (working.length) h += `<div class="wline working"><b>Working now · ${working.length}</b>` + working.map(s => { const c = cardOf(s.id);
+    return `<a class="srow running" data-jump="${s.id}" title="Jump to it"><span class="mk">◐</span><span class="nm">${esc(s.agent_name)}${s.area ? ` <span class="muted">${esc(s.area)}</span>` : ''}</span>
+      <span class="rt agotxt">${esc(s.ago)}</span><span class="sm one">${esc(c ? c.headline : s.title)}</span></a>`; }).join('') + `</div>`;
+  if (R.total) {
+    const segs = RUN_SEG.filter(g => R[g[0]]), clean = R.clean || [], notable = R.notable || [];
+    h += `<div class="wline"><b>Routines · last 24h</b>
+      <div class="rbar">${segs.map(g => `<i class="${g[0]}" style="flex:${R[g[0]]}" title="${R[g[0]]} ${g[1]}"></i>`).join('')}</div>
+      <div class="rleg">${segs.map(g => `<span><i class="${g[0]}"></i>${R[g[0]]} ${g[1]}</span>`).join('')}</div>`
+      + notable.map(i => runRow(i, name)).join('')
+      + (clean.length ? `<a class="srow tog" data-clean="1"><span class="mk">${cleanOpen ? '▾' : '▸'}</span><span class="nm">${notable.length ? `${clean.length} other${clean.length > 1 ? 's' : ''} ran clean` : `All ${clean.length} ran clean`}</span></a>` : '')
+      + (cleanOpen ? clean.map(c => `<a class="srow clean" data-open="${c.id}" title="Last run ${agoWords(c.at)}"><span class="mk">✓</span><span class="nm">${esc(c.name)} <span class="muted">${esc(name(c.agent))}</span></span><span class="rt">${c.runs > 1 ? '×' + c.runs : ''}</span></a>`).join('') : '')
+      + `</div>`;
+  }
+  if ((H.upcoming || []).length) {
+    let day = new Date().toDateString();
+    h += `<div class="wline"><b>Coming up</b>` + H.upcoming.map(u => { const d = new Date(u.at * 1000), turn = d.toDateString() !== day; day = d.toDateString();
+      return (turn ? `<span class="sum day">${d.toLocaleDateString([], {weekday: 'long'})}</span>` : '')
+        + `<a class="srow up ${u.kind}" data-open="${u.id}" title="${u.kind === 'routine' ? 'Routine' : 'Follow-up'} · ${esc(u.when)}">
+          <span class="tm">${soonShort(u.at)}</span><span class="nm">${u.kind === 'followup' ? '<span class="fd">◆</span> ' : ''}${esc(u.title)} <span class="muted">${esc(name(u.agent))}</span></span></a>`; }).join('')
+      + (H.upcoming_more ? `<span class="sum more">and ${H.upcoming_more} more routine run${H.upcoming_more > 1 ? 's' : ''} by tomorrow night</span>` : '') + `</div>`;
+  }
+  return h ? `<div class="strips">${h}</div>` : '';
+}
+function openItem(id) {
+  if (!id) return;
+  if (!/^[frq]:/.test(id)) return openSession(id);
+  if (SEL.home) { CUR = id; detailOpen = true; render(); }
+}
+function renderHome() {
+  const T = DATA.triage || {};
+  if (triageOn() && FRESH && T.reorder) { FRESH = false; applyOrder(); return; }
+  FRESH = false;
+  const tri = Object.fromEntries((T.items || []).map(i => [i.id, i]));
+  const items = homeItems();
+  NAV = items.map(i => i.x.id);
+  // An item's page follows it out of the queue; the strips below open items that were never in it.
+  if (CUR && !NAV.includes(CUR) && !(detailOpen && /^[fr]:/.test(CUR))) { CUR = null; detailOpen = false; }
+  if (!CUR) CUR = NAV[0] || null;
+  let h = `<div class="tview"><div class="tmain"><div class="chips"><span class="chip agentchip on">Home</span><span class="chip agentchip" data-agent="">All</span>`
+    + sortedAgents().filter(a => a.pinned || visible(byAgent(a.root)).length).map(a => `<span class="chip agentchip" data-agent="${esc(a.root)}">${esc(a.display_name)}</span>`).join('') + `</div>`;
+  h += `<div class="thead"><h2>Needs you</h2><span class="n">${items.length}</span><span class="sp"></span>${triageOn() && T.reorder ? '<button class="primary reorder" data-reorder="1" title="Put the list in the newest order (r)">New order ready · r</button>' : ''}</div>`;
+  h += items.map((i, n) => homeCard(n, i.kind, i.x, tri[i.x.id])).join('') || `<div class="empty">Nothing needs you</div>`;
+  h += `<div class="keys"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>⏎</kbd> or click to open · <kbd>1</kbd>–<kbd>9</kbd> open · <kbd>d</kbd> done · <kbd>z</kbd> remind${triageOn() ? ' · a reply button copies it, then jumps' : ''}</div></div>${homeStrips()}</div>`;
   const el = $('#list'); el.innerHTML = h;
-  el.querySelectorAll('[data-id]').forEach(c => c.addEventListener('click', () => { CUR = c.dataset.id; renderListSelection(); openSession(CUR); }));
+  el.querySelectorAll('[data-id]').forEach(c => c.addEventListener('click', () => { CUR = c.dataset.id; renderListSelection(); c.dataset.kind === 'session' ? (renderDetail(), openSession(CUR)) : openItem(CUR); }));
+  el.querySelectorAll('[data-agent]').forEach(c => c.addEventListener('click', () => { SEL = {agent: c.dataset.agent || null, area: null}; save('sel', SEL); CUR = null; detailOpen = false; render(); }));
+  el.querySelectorAll('[data-kind="session"]').forEach(c => c.addEventListener('contextmenu', e => {
+    const s = DATA.sessions.find(x => x.id === c.dataset.id); if (!s) return;
+    e.preventDefault(); CUR = s.id; renderListSelection(); sessionCtx(e.clientX, e.clientY, s);
+  }));
   el.querySelectorAll('[data-jump]').forEach(c => c.addEventListener('click', () => openSession(c.dataset.jump)));
+  el.querySelectorAll('[data-open]').forEach(c => c.addEventListener('click', () => openItem(c.dataset.open)));
+  const tog = el.querySelector('[data-clean]'); if (tog) tog.addEventListener('click', () => { cleanOpen = !cleanOpen; save('cleanOpen', cleanOpen); render(); });
   el.querySelectorAll('[data-reply]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); replyAndJump(b.closest('[data-id]').dataset.id, b.dataset.reply); }));
   el.querySelectorAll('[data-done]').forEach(b => b.addEventListener('click', async e => { e.stopPropagation(); await api(`/api/sessions/${b.dataset.done}/done`, {}); refresh(true); }));
+  el.querySelectorAll('[data-ack]').forEach(b => b.addEventListener('click', async e => { e.stopPropagation(); await api('/api/routines/ack', {id: b.dataset.ack}); refresh(true); }));
+  el.querySelectorAll('[data-fustart]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); const f = DATA.followups.find(x => x.id === b.dataset.fustart); if (f) startFollowup(f); }));
   const re = el.querySelector('[data-reorder]'); if (re) re.addEventListener('click', applyOrder);
 }
 function renderList() {
-  if (SEL.triage) return renderTriage();
+  if (SEL.home) return renderHome();
   const agent = agentOf(SEL.agent);
   const list = currentList();
   const allFu = followupsFor(SEL.agent, SEL.area);
   // Everything view only surfaces what is due; an agent's page shows its whole queue.
   const fus = SEL.agent ? allFu : allFu.filter(f => f.due !== 'upcoming');
   let h = `<div class="head"><h2><span class="t">${agent ? esc(agent.display_name) : 'Everything'}</span><span class="n">${list.length}</span><button class="quiet" style="padding:2px 8px;font-size:12px" data-clear="1" title="Mark every Closed session here as done">Clear</button><button class="primary" style="padding:2px 8px;font-size:12px" data-newhere="1" title="Start a session here now · ⌥-click for options">＋ New${agent?' here':''}</button></h2>`;
-  h += `<div class="chips"><span class="chip agentchip ${!SEL.agent?'on':''}" data-agent="">All</span>` + sortedAgents().filter(a => a.pinned || visible(byAgent(a.root)).length).map(a => `<span class="chip agentchip ${SEL.agent===a.root?'on':''}" data-agent="${esc(a.root)}">${esc(a.display_name)}</span>`).join('');
+  h += `<div class="chips"><span class="chip agentchip" data-home="1">Home</span><span class="chip agentchip ${!SEL.agent?'on':''}" data-agent="">All</span>` + sortedAgents().filter(a => a.pinned || visible(byAgent(a.root)).length).map(a => `<span class="chip agentchip ${SEL.agent===a.root?'on':''}" data-agent="${esc(a.root)}">${esc(a.display_name)}</span>`).join('');
   if (agent && agent.areas.length) {
     h += `<span class="chip ${!SEL.area?'on':''}" data-ar="">all areas</span>` + agent.areas.map(ar => {
       const n = visible(byAgent(agent.root)).filter(s => s.area && (s.area === ar.rel || s.area.startsWith(ar.rel + '/'))).length;
@@ -633,6 +790,7 @@ function renderList() {
   }));
   el.querySelectorAll('[data-ar]').forEach(c => c.addEventListener('click', () => { SEL.area = c.dataset.ar || null; save('sel', SEL); render(); }));
   el.querySelectorAll('[data-agent]').forEach(c => c.addEventListener('click', () => { SEL = {agent: c.dataset.agent || null, area: null}; save('sel', SEL); CUR = null; render(); }));
+  el.querySelector('[data-home]').addEventListener('click', goHome);
   el.querySelectorAll('[data-id]').forEach(c => c.addEventListener('click', e => {
     // The first click re-renders the row, so a dblclick listener would sit on a replaced element.
     if (e.detail === 2 && CUR === c.dataset.id) return openSession(CUR);
@@ -658,6 +816,13 @@ async function openSession(id) {
 function renderListSelection() { document.querySelectorAll('.item').forEach(i => i.classList.toggle('on', i.dataset.id === CUR)); }
 
 /* ---------- detail ---------- */
+async function startFollowup(f) {
+  const last = DATA.prefs.last_start || {};
+  const prompt = `Follow-up due ${f.date}${f.time ? ' ' + f.time : ''}: ${f.title}\n\n${(f.body || '').slice(0, 1500)}\n\nThis comes from FOLLOWUPS.md. When it is handled, record the outcome where it belongs and delete the item from that file.`;
+  const r = await api('/api/start', {cwd: f.cwd, prompt, permission_mode: last.permission_mode || 'acceptEdits', title: f.title.slice(0, 90), followup: f.id});
+  if (r.error) { toast(r.error); return; }
+  toast('Session started for this follow-up', true); setTimeout(() => refresh(true), 1500);
+}
 function renderFollowup(d, f) {
   const a = agentOf(f.agent);
   d.innerHTML = `
@@ -670,13 +835,7 @@ function renderFollowup(d, f) {
     </div>
     <div class="msg">${esc(f.body || '(no details)')}</div>
     <div class="path">${esc(f.file)} · read-only; the agent edits this file</div>`;
-  $('#fuStart').addEventListener('click', async () => {
-    const last = DATA.prefs.last_start || {};
-    const prompt = `Follow-up due ${f.date}${f.time ? ' ' + f.time : ''}: ${f.title}\n\n${(f.body || '').slice(0, 1500)}\n\nThis comes from FOLLOWUPS.md. When it is handled, record the outcome where it belongs and delete the item from that file.`;
-    const r = await api('/api/start', {cwd: f.cwd, prompt, permission_mode: last.permission_mode || 'acceptEdits', title: f.title.slice(0, 90), followup: f.id});
-    if (r.error) { toast(r.error); return; }
-    toast('Session started for this follow-up', true); setTimeout(() => refresh(true), 1500);
-  });
+  $('#fuStart').addEventListener('click', () => startFollowup(f));
   if (f.session_id) $('#fuOpen').addEventListener('click', () => openSession(f.session_id));
   $('#back').addEventListener('click', () => { detailOpen = false; render(); });
 }
@@ -792,7 +951,7 @@ function renderDetail() {
   d.innerHTML = `
     <button class="back quiet" id="back">‹ Back</button>
     <h1><button class="star ${s.starred?'on':''}" data-act="star" title="${s.starred?'Unstar':'Star'} (s)"></button><span class="t" title="Click to rename">${esc(s.title)}</span></h1>
-    <div class="meta"><b>${esc(s.agent_name)}</b>${s.area?` › ${esc(s.area)}`:''} · <span class="ago">${esc(s.ago)}</span> ago ${s.live?'<span class="tag live">live</span>':'<span class="tag">exited</span>'}${s.question?'<span class="tag q">asks something</span>':''}${s.waiting?`<span class="tag bgw">⧗ ${esc(s.waiting)} running</span>`:''}${s.remind_at?`<span class="tag rem ${s.remind_due?'due':''}">⏰ ${esc(s.remind_label)}</span>`:''}${(!s.hooked && s.live)?'<span class="tag" title="No hook events yet; state inferred from the transcript">inferred</span>':''}</div>
+    <div class="meta"><b>${esc(s.agent_name)}</b>${s.area?` › ${esc(s.area)}`:''} · <span class="ago">${esc(s.ago)}</span> ago ${s.live?'<span class="tag live">live</span>':'<span class="tag">exited</span>'}${s.question?'<span class="tag q">asks something</span>':''}${s.waiting?`<span class="tag bgw">⧗ ${esc(s.waiting)} running</span>`:''}${s.remind_at?`<span class="tag rem ${s.remind_due?'due':''}">⏰ ${esc(s.remind_label)}${s.remind_close?' · closes after this turn':''}</span>`:''}${(!s.hooked && s.live)?'<span class="tag" title="No hook events yet; state inferred from the transcript">inferred</span>':''}</div>
     <div class="state ${s.bucket}"><span class="dot ${s.bucket}">${dotFor(s)}</span>${esc(s.label)}</div>
     ${s.detail ? `<div class="why">${esc(s.detail)}</div>` : ''}
     ${card ? `<div class="card"><b>Needs from you:</b> ${esc(card.needs)}${card.options && card.options.length ? `<div class="opts">${card.options.map(o => `<button class="opt" data-reply="${esc(o)}" title="Copy, then jump to the session">${esc(o)}</button>`).join('')}</div>` : ''}</div>` : ''}
@@ -893,7 +1052,7 @@ function renderSettings() {
              `<select data-set="terminal">${opts(A.launchers.filter(l => l !== 'Claude').map(l => [l, LAUNCHER_LABEL[l] || l]), A.terminal)}</select>`) : '')
     + setRow('Reachable from your phone', 'Sessions Nizam starts or resumes in a terminal can be opened in the Claude app on your phone, and Telegram links to the ones that need you. Needs a claude.ai sign-in.',
              sw('data-set="remote_control"', A.remote_control))
-    + setRow('Check first', 'Claude reads what each waiting session last said and suggests which to answer first. It uses your Claude plan: a quick Haiku call when sessions stop, and a Sonnet call to order them.',
+    + setRow('Check first', 'On Home, Claude reads what each waiting session last said, says what it needs from you, and suggests which to answer first. It uses your Claude plan: a quick Haiku call when sessions stop, and a Sonnet call to order them.',
              sw('data-set="triage"', A.triage))
     + setRow('Untimed follow-ups come up at', 'A follow-up with a time of its own comes up then instead.',
              `<input type="text" data-set="followup_hour" value="${esc(SET.followups.hour)}" spellcheck="false">`)
@@ -977,12 +1136,14 @@ function remindBox(s) {
   inp.value = ''; err.textContent = s.remind_at ? `Set for ${s.remind_label}` : '';
   err.style.color = s.remind_at ? 'var(--muted)' : '';
   $('#remClear').style.display = s.remind_at ? '' : 'none';
+  const shut = $('#remClose'); shut.checked = false; $('#remCloseRow').style.display = s.live ? 'flex' : 'none';
   m.classList.add('open'); inp.focus();
   const close = () => { m.classList.remove('open'); cleanup(); };
   const submit = async when => {
-    const r = await api(`/api/sessions/${s.id}/remind`, {when});
+    const r = await api(`/api/sessions/${s.id}/remind`, {when, close: shut.checked});
     if (r.error) { err.style.color = ''; err.textContent = r.error; inp.focus(); return; }
-    close(); toast(r.at ? `Back ${r.spoken}` : 'Reminder cleared', true);
+    const shutting = {now: ', closing its window', after_turn: ', its window closes when the turn ends', no: '; a Claude app window stays open'}[r.closing] || '';
+    close(); toast(r.at ? `Back ${r.spoken}${shutting}` : 'Reminder cleared', true);
     await refresh(true);
     const row = document.querySelector(`.item[data-id="${s.id}"]`); if (row) row.scrollIntoView({block: 'nearest'});
   };
@@ -1084,10 +1245,10 @@ document.addEventListener('keydown', e => {
   if (e.key === 's' && CUR && !e.metaKey && !e.ctrlKey && DATA.sessions.some(x => x.id === CUR)) api(`/api/sessions/${CUR}/star`, {}).then(() => refresh(true));
   if (e.key === 'z' && CUR && !e.metaKey && !e.ctrlKey) { const s = DATA.sessions.find(x => x.id === CUR); if (s) { e.preventDefault(); remindBox(s); } }
   if (e.key === 'd' && CUR) { const s = DATA.sessions.find(x => x.id === CUR); if (s && s.bucket !== 'done') api(`/api/sessions/${CUR}/done`, {}).then(() => refresh(true)); }
-  if (e.key === 'Enter') openSession(CUR);
-  if (SEL.triage && !e.metaKey && !e.ctrlKey) {
-    if (e.key === 'r' && DATA.triage && DATA.triage.reorder) applyOrder();
-    if (/^[1-9]$/.test(e.key) && NAV[+e.key - 1]) { CUR = NAV[+e.key - 1]; openSession(CUR); render(); }
+  if (e.key === 'Enter') openItem(CUR);
+  if (SEL.home && !e.metaKey && !e.ctrlKey) {
+    if (e.key === 'r' && triageOn() && DATA.triage.reorder) applyOrder();
+    if (/^[1-9]$/.test(e.key) && NAV[+e.key - 1]) { CUR = NAV[+e.key - 1]; render(); openItem(CUR); }
   }
 });
 

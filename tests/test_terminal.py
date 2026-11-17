@@ -117,3 +117,52 @@ class OpenSession(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CloseSession(unittest.TestCase):
+    def close(self, host, background=False, dies=True):
+        alive = iter(["42"] if dies else ["42"] * 1000)
+        with mock.patch("nizam.remote.background", return_value=background), \
+             mock.patch("nizam.remote.release", return_value=True) as release, \
+             mock.patch.object(T, "session_host", return_value=host), \
+             mock.patch.object(T, "_ps", side_effect=lambda pid, fmt: next(alive, "")), \
+             mock.patch.object(T, "_ghostty_terminal", return_value="term-1"), \
+             mock.patch.object(T.time, "time", side_effect=iter(range(0, 10000, 3))), \
+             mock.patch.object(T.time, "sleep"), \
+             mock.patch.object(T.os, "kill") as kill, \
+             mock.patch.object(T, "_osascript", return_value="closed") as script:
+            ok = T.close_session(42)
+        return ok, kill, script, release
+
+    def test_the_session_ends_before_its_tab_closes(self):
+        ok, kill, script, _ = self.close({"kind": "terminal", "pid": 42, "tty": "ttys003", "app": "Terminal"})
+        self.assertTrue(ok)
+        kill.assert_called_once_with(42, T.signal.SIGTERM)
+        self.assertIn("/dev/ttys003", script.call_args[0][0])
+
+    def test_ghostty_closes_the_terminal_it_found(self):
+        ok, _, script, _ = self.close({"kind": "terminal", "pid": 42, "tty": "ttys003", "app": "Ghostty"})
+        self.assertTrue(ok)
+        self.assertIn('close terminal id "term-1"', script.call_args[0][0])
+
+    def test_a_session_that_will_not_end_keeps_its_tab(self):
+        ok, _, script, _ = self.close({"kind": "terminal", "pid": 42, "tty": "ttys003", "app": "Terminal"}, dies=False)
+        self.assertFalse(ok)
+        script.assert_not_called()
+
+    def test_an_unknown_terminal_only_ends_the_session(self):
+        ok, kill, script, _ = self.close({"kind": "terminal", "pid": 42, "tty": "ttys003", "app": None})
+        self.assertTrue(ok)
+        kill.assert_called_once()
+        script.assert_not_called()
+
+    def test_the_claude_app_is_left_alone(self):
+        ok, kill, script, _ = self.close({"kind": "desktop", "pid": 42})
+        self.assertFalse(ok)
+        kill.assert_not_called()
+
+    def test_a_background_session_is_released(self):
+        ok, kill, _, release = self.close({"kind": "desktop", "pid": 42}, background=True)
+        self.assertTrue(ok)
+        release.assert_called_once_with(42)
+        kill.assert_not_called()

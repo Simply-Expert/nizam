@@ -6,7 +6,9 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
+import time
 import uuid
 from pathlib import Path
 
@@ -223,6 +225,88 @@ end tell"""
     return "found" in _osascript(script)
 
 
+def _close_terminal_tab(tty: str) -> bool:
+    dev = tty if tty.startswith("/dev/") else "/dev/" + tty
+    script = f'''
+tell application "Terminal"
+    repeat with w in windows
+        try
+            repeat with t in tabs of w
+                if (tty of t as string) is "{dev}" then
+                    if (count of tabs of w) is 1 then
+                        close w
+                    else
+                        do script "exit" in t
+                    end if
+                    return "closed"
+                end if
+            end repeat
+        end try
+    end repeat
+end tell
+return "missing"'''
+    return "closed" in _osascript(script)
+
+
+def _close_iterm_tab(tty: str) -> bool:
+    dev = tty if tty.startswith("/dev/") else "/dev/" + tty
+    script = f'''
+tell application "iTerm"
+    repeat with w in windows
+        repeat with t in tabs of w
+            repeat with s in sessions of t
+                if (tty of s) is "{dev}" then
+                    tell s to close
+                    return "closed"
+                end if
+            end repeat
+        end repeat
+    end repeat
+end tell
+return "missing"'''
+    return "closed" in _osascript(script)
+
+
+def closable(pid: int) -> bool:
+    """Whether a live session sits somewhere Nizam can close: a terminal tab, or its own background."""
+    from .remote import background
+    return background(pid) or session_host(pid)["kind"] == "terminal"
+
+
+def close_session(pid: int) -> bool:
+    """End a live session and close the tab that showed it; True once the session is gone.
+    It stays resumable: only the process and its window go."""
+    from .remote import background, release
+    if background(pid):
+        return release(pid)
+    host = session_host(pid)
+    if host["kind"] != "terminal":
+        return False
+    tty, app = host["tty"], host.get("app")
+    # Looked up first: once the session exits, the tab's title is the shell's again.
+    ghostty = None
+    if app == "Ghostty" and _TTY.match(tty):
+        ghostty = _ghostty_ids.pop((pid, tty), None) or _ghostty_terminal(tty)
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    except PermissionError:
+        return False
+    deadline = time.time() + 5.0
+    while _ps(pid, "pid=") and time.time() < deadline:
+        time.sleep(0.2)
+    if _ps(pid, "pid="):
+        return False
+    if app == "Terminal":
+        _close_terminal_tab(tty)
+    elif app == "iTerm":
+        _close_iterm_tab(tty)
+    elif ghostty:
+        _osascript(f'tell application "Ghostty" to close terminal id {json.dumps(ghostty)}')
+    return True
+
+
 def open_in_desktop(session_id: str, provider: str | None = None) -> bool:
     url = providers.get(provider).desktop_url(session_id) if _SAFE_ID.match(session_id) else None
     if not url:
@@ -366,7 +450,6 @@ def start(cwd: str, prompt: str = "", permission_mode: str = "acceptEdits",
     if worktree:
         root = git_root(cwd)
         if root:
-            import time
             stamp = time.strftime("%Y%m%d-%H%M%S")
             wt = Path(root).parent / f"{Path(root).name}-{stamp}"
             shell = (f"git -C {shlex.quote(root)} worktree add -b {p.name}/{stamp} {shlex.quote(str(wt))} "

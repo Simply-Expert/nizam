@@ -415,12 +415,12 @@ _runs_cache: tuple[tuple[float, int], dict] | None = None
 
 def runs_index() -> dict:
     """{'last': routine id -> latest real run, 'attention': routine id -> latest run that
-    asked for attention, 'sessions': session id -> run}."""
+    asked for attention, 'sessions': session id -> run, 'runs': every real run, oldest first}."""
     global _runs_cache
     try:
         st = RUNS_FILE.stat()
     except OSError:
-        return {"last": {}, "attention": {}, "sessions": {}}
+        return {"last": {}, "attention": {}, "sessions": {}, "runs": []}
     key = (st.st_mtime, st.st_size)
     if _runs_cache and _runs_cache[0] == key:
         return _runs_cache[1]
@@ -443,7 +443,8 @@ def runs_index() -> dict:
             last[run.get("routine", "")] = run      # file order is time order
         if run.get("status") == ATTENTION:
             attention[run.get("routine", "")] = run
-    idx = {"last": last, "attention": attention, "sessions": sessions}
+    idx = {"last": last, "attention": attention, "sessions": sessions,
+           "runs": [r for r in runs.values() if r.get("status") != "skipped"]}
     _runs_cache = (key, idx)
     return idx
 
@@ -452,6 +453,10 @@ def _live_status(run: dict) -> dict:
     if run.get("status") == "running" and not is_running(run):
         return {**run, "status": "errored", "summary": "The runner died before it could record a result."}
     return run
+
+
+def runs_since(ts: float) -> list[dict]:
+    return [_live_status(r) for r in runs_index()["runs"] if (r.get("started") or 0) >= ts]
 
 
 def _brief(run: dict) -> dict:
@@ -478,7 +483,7 @@ def board_rows(agent, acks: dict) -> list[dict]:
             "kind": "script" if r.command else "agent", "command": r.command, "about": r.prompt[:600] if r.command else "",
             "file": str(r.path), "cwd": str(r.cwd), "schedule": r.meta.get("schedule", "manual"),
             "state": install_state(r, inst), "error": r.error, "timeout": r.timeout,
-            "next": when_label(nxt), "status": status,
+            "next": when_label(nxt), "next_at": nxt.timestamp() if nxt else None, "status": status,
             "failing": bool(last) and status in FAILED and last["run_id"] > seen,
             # A later quiet run does not clear what an earlier one found; only Dismiss does.
             "attention": _brief(noted) if noted and noted["run_id"] > seen else None,

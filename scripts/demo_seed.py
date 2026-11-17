@@ -140,10 +140,10 @@ from nizam import routines as R
 la = HOME / "Library/LaunchAgents"
 la.mkdir(parents=True)
 runs = []
-results = [("complete", "Triaged 34 emails, drafted 5 replies.", 3 * 3600),
-           ("complete", "No invoices are overdue.", 3 * 86400),
+results = [("completed", "Triaged 34 emails, drafted 5 replies.", 3 * 3600),
+           ("completed", "No invoices are overdue.", 3 * 86400),
            ("errored", "restic: repository media is locked by another process", 5 * 3600),
-           ("complete", "Digest draft saved with 9 links.", 6 * 86400)]
+           ("completed", "Digest draft saved with 9 links.", 6 * 86400)]
 for f, (status, summary, age) in zip(files, results):
     r = R.load(f)
     with open(la / f"{r.label}.plist", "wb") as fh:
