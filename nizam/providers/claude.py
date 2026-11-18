@@ -364,6 +364,7 @@ def read_transcript(path: Path, full: bool = False) -> Transcript | None:
             t.background = _background(path, f)
     except OSError:
         return None
+    scripted = typed = False
     for raw in lines:
         if not raw.strip():
             continue
@@ -381,6 +382,11 @@ def read_transcript(path: Path, full: bool = False) -> Transcript | None:
         if typ not in ("user", "assistant") or e.get("isSidechain"):
             continue
         t.entries += 1
+        if ep := e.get("entrypoint"):
+            if not ep.startswith("sdk"):
+                typed = True
+            elif t.entries == 1:
+                scripted = True
         if not t.cwd and e.get("cwd"):
             t.cwd = e["cwd"]
         ts = _parse_ts(e.get("timestamp"))
@@ -412,6 +418,7 @@ def read_transcript(path: Path, full: bool = False) -> Transcript | None:
             if texts:
                 t.last_assistant_text = "\n".join(texts)
             t.last_assistant_tools = tools
+    t.scripted = scripted and not typed
     if t.last_role == "assistant":
         t.pending_label = next((PENDING_TOOLS[n] for n in PENDING_TOOLS if n in t.last_assistant_tools), None)
     if not t.cwd:

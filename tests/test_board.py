@@ -197,6 +197,36 @@ class WithoutHooks(BoardCase):
         self.assertEqual((s["bucket"], s["live"], s["runtime_status"]), ("closed", False, "exited"))
 
 
+class ScriptedRuns(BoardCase):
+    def run_of(self, *entrypoints):
+        at = self.now - 60
+        entries = []
+        for i, ep in enumerate(entrypoints):
+            entries += [fx.user(f"turn {i}", at + i, self.cwd, entrypoint=ep),
+                        fx.assistant("ok", at + i + 0.5, self.cwd, entrypoint=ep)]
+        self.chat(entries=entries)
+
+    def ids(self):
+        return [s["id"] for s in self.rows()]
+
+    def test_a_script_run_is_hidden_but_its_agent_shows(self):
+        self.run_of("sdk-cli")
+        self.assertEqual(self.ids(), [])
+        self.assertIn(self.cwd, [a["root"] for a in self.board._build(self.now)["agents"]])
+
+    def test_resuming_it_by_hand_makes_it_a_session(self):
+        self.run_of("sdk-cli", "cli")
+        self.assertEqual(self.ids(), [SID])
+
+    def test_it_shows_while_resumed_before_the_first_message(self):
+        self.run_of("sdk-ts"); self.live()
+        self.assertEqual(self.ids(), [SID])
+
+    def test_a_typed_session_is_not_scripted(self):
+        self.run_of("cli")
+        self.assertEqual(self.ids(), [SID])
+
+
 class Rows(BoardCase):
     def test_agent_area_and_text(self):
         area = self.agent / "taxes"

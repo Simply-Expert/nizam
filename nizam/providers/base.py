@@ -54,6 +54,7 @@ class Transcript:
     summary: str | None = None
     custom_title: str | None = None
     entries: int = 0
+    scripted: bool = False   # started by a script (claude -p, the SDK) and never typed into
     background: dict[str, tuple[str, float]] = field(default_factory=dict)  # task id -> (kind, launched at), still running
 
 

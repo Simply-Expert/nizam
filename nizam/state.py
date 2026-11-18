@@ -412,8 +412,8 @@ class Board:
             live = bool(rt and rt.alive)
             if sid in routine_sessions and t.last_role == "assistant":
                 routines_mod.settle_resumed(routine_sessions[sid], t.last_assistant_text, t.last_prompt_ts)
-            if sid in routine_sessions and (not live or routines_mod.is_running(routine_sessions[sid])):
-                # A routine's headless run shows as the routine; it becomes a session once you resume it.
+            if (t.scripted and not live) or (sid in routine_sessions and (not live or routines_mod.is_running(routine_sessions[sid]))):
+                # Headless runs (a routine's, or a script's claude -p) aren't conversations until you resume one.
                 agents.setdefault(str(agent.root), agent.to_dict())
                 continue
             # Not the file's mtime when it has messages: a running CLI keeps appending bookkeeping lines.

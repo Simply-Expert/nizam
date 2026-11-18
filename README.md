@@ -118,6 +118,9 @@ Sessions fall into six states:
 | **Closed** | The session exited without being marked done. Ages into Done after two days. | Process gone |
 | **Done** | You marked it done, or it went two days without activity. New activity reopens it. | You |
 
+Runs that a script started (`claude -p`, the Agent SDK) and nobody typed into stay off the board,
+as a routine's runs do. Resume one by hand and it becomes a session like any other.
+
 Done is deliberately manual. The old approach of guessing "finished" from the wording of Claude's
 last message was wrong too often; you are the only one who knows a task is over.
 
