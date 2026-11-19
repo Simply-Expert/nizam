@@ -7,8 +7,9 @@ from nizam import home
 NOW = datetime(2026, 11, 9, 15, 0).timestamp()
 
 
-def session(sid, bucket="inbox", age=60.0, live=True):
-    return {"id": sid, "bucket": bucket, "live": live, "last_activity": NOW - age}
+def session(sid, bucket="inbox", age=60.0, live=True, remind_at=None):
+    return {"id": sid, "agent": "/a", "title": sid, "bucket": bucket, "live": live, "last_activity": NOW - age,
+            "remind_at": remind_at, "remind_label": ""}
 
 
 def followup(fid, due, at, in_session=False):
@@ -32,20 +33,21 @@ class Queue(unittest.TestCase):
     def ids(self, **kw):
         return [i["id"] for i in build(**kw)["queue"]]
 
-    def test_blocked_work_comes_before_dated_work_and_finished_turns_last(self):
+    def test_blocked_work_comes_first_then_routines_and_finished_turns_last(self):
         got = self.ids(sessions=[session("turn"), session("blocked", "needs")],
-                       followups=[followup("f:today", "today", NOW - 60), followup("f:late", "overdue", NOW - 90000)],
-                       routines=[routine("found", attention={"run_id": "1"}), routine("broken", failing=True)],
-                       requests=[request("q:1")])
-        self.assertEqual(got, ["blocked", "r:broken", "r:found", "f:late", "f:today", "q:1", "turn"])
+                       routines=[routine("found", attention={"run_id": "1"}), routine("broken", failing=True)])
+        self.assertEqual(got, ["blocked", "r:broken", "r:found", "turn"])
 
     def test_what_is_already_in_hand_stays_out(self):
         got = self.ids(sessions=[session("working", "working"), session("exited", "inbox", live=False)],
-                       followups=[followup("f:soon", "upcoming", NOW + 3600),
-                                  followup("f:busy", "today", NOW - 60, in_session=True)],
-                       routines=[routine("fine")],
-                       requests=[request("q:started", status="started"), request("q:note", "reply", "started")])
-        self.assertEqual(got, ["q:note"])
+                       routines=[routine("fine")])
+        self.assertEqual(got, [])
+
+    def test_follow_ups_and_requests_live_on_their_own_page(self):
+        got = build(followups=[followup("f:late", "overdue", NOW - 90000),
+                               followup("f:soon", "upcoming", NOW + 3600)],
+                    requests=[request("q:1"), request("q:note", "reply", "started")])
+        self.assertEqual((got["queue"], got["upcoming"]), ([], []))
 
     def test_check_first_orders_the_sessions_within_their_place(self):
         tri = {"enabled": True, "items": [{"id": "old"}, {"id": "new"}]}
@@ -88,19 +90,16 @@ class Strips(unittest.TestCase):
 
     def test_upcoming_runs_to_the_end_of_tomorrow(self):
         tomorrow = (datetime.fromtimestamp(NOW) + timedelta(days=1)).replace(hour=23).timestamp()
-        got = build(followups=[followup("f:tomorrow", "upcoming", tomorrow),
-                               followup("f:later", "upcoming", tomorrow + 2 * 3600),
-                               followup("f:due", "today", NOW - 60)],
-                    routines=[routine("digest", next_at=NOW + 600), routine("manual")])["upcoming"]
-        self.assertEqual([u["id"] for u in got], ["r:digest", "f:tomorrow"])
+        got = build(routines=[routine("digest", next_at=NOW + 600), routine("nightly", next_at=tomorrow),
+                              routine("weekly", next_at=tomorrow + 2 * 3600), routine("manual")])["upcoming"]
+        self.assertEqual([u["id"] for u in got], ["r:digest", "r:nightly"])
 
-    def test_upcoming_keeps_follow_ups_when_many_routines_run_first(self):
-        tomorrow = (datetime.fromtimestamp(NOW) + timedelta(days=1)).replace(hour=10).timestamp()
-        got = build(followups=[followup("f:tomorrow", "upcoming", tomorrow)],
+    def test_snoozed_sessions_come_up_beside_the_next_few_routine_runs(self):
+        got = build(sessions=[session("parked", "later", remind_at=NOW + 150), session("turn")],
                     routines=[routine(f"hourly{n}", next_at=NOW + 60 * n) for n in range(1, 8)])
-        self.assertEqual([u["id"] for u in got["upcoming"]], ["r:hourly1", "r:hourly2", "r:hourly3", "f:tomorrow"])
+        self.assertEqual([u["id"] for u in got["upcoming"]], ["r:hourly1", "r:hourly2", "parked", "r:hourly3"])
+        self.assertEqual(got["upcoming"][2]["kind"], "session")
         self.assertEqual(got["upcoming_more"], 4)
-
 
 if __name__ == "__main__":
     unittest.main()

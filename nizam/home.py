@@ -1,4 +1,6 @@
-"""Home: everything that waits on the person as one ordered queue, with what routines did lately and what comes next."""
+"""Home: what is fresh and waits on the person as one ordered queue, with what routines did lately and what comes next.
+
+Follow-ups and requests can sit for days, so they live on their own page, not here."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -8,10 +10,9 @@ from .triage import waiting
 
 RECENT_SECS = 86400
 RECENT_MAX = 12
-UPCOMING_FOLLOWUPS = 6
 UPCOMING_ROUTINES = 3
 STATES = ("failing", "found", "running", "recovered", "handled")
-BLOCKED, ROUTINE, OVERDUE, DUE, REQUEST, YOUR_TURN = range(6)
+BLOCKED, ROUTINE, YOUR_TURN = range(3)
 
 
 def _first_line(text: str) -> str:
@@ -27,14 +28,6 @@ def _queue(snap: dict, tri: dict) -> list[dict]:
     for r in snap.get("routines", []):
         if r["failing"] or r["attention"]:
             rows.append(((ROUTINE, not r["failing"], r["name"]), {"id": r["id"], "kind": "routine"}))
-    for f in snap.get("followups", []):
-        if f["due"] != "upcoming" and not f.get("in_session"):
-            rows.append(((OVERDUE if f["due"] == "overdue" else DUE, f["at"], f["title"]),
-                         {"id": f["id"], "kind": "followup"}))
-    for n, q in enumerate(snap.get("requests", [])):
-        # One already started shows as the session it opened.
-        if q["kind"] == "reply" or q["status"] != "started":
-            rows.append(((REQUEST, n, ""), {"id": q["id"], "kind": "request"}))
     return [item for _, item in sorted(rows, key=lambda r: r[0])]
 
 
@@ -85,16 +78,15 @@ def _recent(snap: dict, runs: list[dict], now: float) -> dict:
 
 
 def _upcoming(snap: dict, now: float) -> tuple[list[dict], int]:
-    """What comes up by itself before the end of tomorrow: every follow-up, and only the next few routine runs."""
+    """Sessions snoozed to come back, and only the next few routine runs before the end of tomorrow."""
     day = datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0)
     end = (day + timedelta(days=2)).timestamp()
-    followups = [{"id": f["id"], "kind": "followup", "agent": f["agent"], "title": f["title"], "at": f["at"],
-                  "when": f["when"]} for f in snap.get("followups", [])
-                 if f["due"] == "upcoming" and f["at"] < end and not f.get("in_session")]
+    snoozed = [{"id": s["id"], "kind": "session", "agent": s["agent"], "title": s["title"], "at": s["remind_at"],
+                "when": s["remind_label"]} for s in snap["sessions"] if s["bucket"] == "later"]
     routines = sorted(({"id": r["id"], "kind": "routine", "agent": r["agent"], "title": r["name"], "at": r["next_at"],
                         "when": r["next"]} for r in snap.get("routines", [])
                        if r.get("next_at") and now < r["next_at"] < end), key=lambda u: (u["at"], u["title"]))
-    out = followups[:UPCOMING_FOLLOWUPS] + routines[:UPCOMING_ROUTINES]
+    out = snoozed + routines[:UPCOMING_ROUTINES]
     out.sort(key=lambda u: (u["at"], u["title"]))
     return out, max(0, len(routines) - UPCOMING_ROUTINES)
 

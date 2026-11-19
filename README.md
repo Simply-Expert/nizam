@@ -128,11 +128,11 @@ last message was wrong too often; you are the only one who knows a task is over.
 
 - **Badge and menu bar**: live counts. Click for the board, right-click for options. The badge is
   draggable and exists because a full menu bar on a notched MacBook hides new status items.
-- **Home**: everything that waits on you, as one numbered list in the order to look at it: blocked
-  sessions, routines that failed or found something, follow-ups that are late or due, requests from
-  other agents, then sessions that finished a turn. A session card jumps to its terminal; the others
-  open beside the list, and a follow-up starts its session from the card. To the side: what is
-  working, what routines did in the last 24 hours, and what comes up by the end of tomorrow. With
+- **Home**: what is fresh and waits on you, as one numbered list in the order to look at it: blocked
+  sessions, routines that failed or found something, then sessions that finished a turn. A session
+  card jumps to its terminal; a routine opens beside the list. To the side: what is working, what
+  routines did in the last 24 hours, and what comes up next: sessions you snoozed and routine runs
+  by the end of tomorrow. With
   *Check first* on in Settings, each session card also says what it needs from you and Claude orders
   the sessions.
 - **Board**: agents on the left (pin, rename, drag to reorder via right-click), the selected agent's
@@ -149,14 +149,15 @@ last message was wrong too often; you are the only one who knows a task is over.
   an exited one with `claude --resume`. **New here** starts a session in that agent and area with
   your last-used settings; ⌥-click for the full dialog (prompt, permission mode, git worktree,
   paste-only).
-- **Follow-ups** appear under an agent's sessions: amber once due, red once late; *All agents*
-  shows only what is due. An item with a time comes up then and notifies; one without comes up at
-  10:00, or whatever `nizam followups hour 8pm` sets. It is late once the next day's untimed items
+- **Follow-ups** appear under an agent's sessions: amber once due, red once late. The
+  *Follow-ups* page under Home lists every agent's follow-ups and the requests between agents, late
+  first, then due today, requests, and what comes up later. An item with a time comes up then and
+  notifies; one without comes up at 10:00, or whatever `nizam followups hour 8pm` sets. It is late once the next day's untimed items
   come up. **Start session** opens one with the follow-up as the first prompt. Nizam never edits
   the file: the agent records the outcome and deletes its own line.
 - **Routines** appear under an agent's follow-ups with their next run and last result. A run that
   errored, timed out, or ended without confirming its work counts under *Needs you*, notifies, and
-  shows in *All agents* until it succeeds or you dismiss it. So does a run that worked and found
+  stays on *Home* until it succeeds or you dismiss it. So does a run that worked and found
   something for you, such as an overdue invoice in the inbox it triages; that one stays until you
   dismiss it, even if later runs find nothing new. **Run now** starts one by hand,
   **Open last run** resumes that run as a normal session, **Sync schedule** installs a new schedule.
