@@ -128,6 +128,7 @@ def load_agent(root: Path) -> Agent:
 
 
 def resolve(cwd: str | Path) -> tuple[Agent, Area | None]:
-    cwd = Path(cwd)
+    # A folder moved behind a symlink keeps its old sessions on the same agent.
+    cwd = Path(os.path.realpath(cwd))
     agent = load_agent(find_agent_root(cwd))
     return agent, agent.area_for(cwd)

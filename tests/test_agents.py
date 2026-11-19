@@ -28,6 +28,17 @@ class Areas(unittest.TestCase):
         self.area("channels/email")
         self.assertEqual(sorted(A._scan_areas(self.root)), ["channels/email"])
 
+    def test_a_session_under_an_old_symlinked_path_belongs_to_the_moved_agent(self):
+        real = self.root.resolve() / "Agents" / "growth"
+        real.mkdir(parents=True)
+        (real / "AGENTS.md").write_text("role")
+        self.area("Agents/growth/channels/email")
+        old = self.root / "MarketingReport"
+        old.symlink_to(real)
+        agent, area = A.resolve(old / "channels" / "email")
+        self.assertEqual(agent.root, real)
+        self.assertEqual(area and area.rel, "channels/email")
+
 
 if __name__ == "__main__":
     unittest.main()
