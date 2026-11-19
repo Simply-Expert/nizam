@@ -442,7 +442,7 @@ function visible(list) { return showDone ? list : list.filter(s => s.bucket !== 
 function currentList() {
   let list = SEL.agent ? byAgent(SEL.agent) : DATA.sessions;
   if (SEL.agent && SEL.area) list = list.filter(s => s.area && (s.area === SEL.area || s.area.startsWith(SEL.area + '/')));
-  return visible(list).sort((a, b) => ORDER[a.bucket] - ORDER[b.bucket] || (a.bucket === 'later' ? a.remind_at - b.remind_at : b.last_activity - a.last_activity));
+  return visible(list).sort((a, b) => ORDER[a.bucket] - ORDER[b.bucket] || b.starred - a.starred || (a.bucket === 'later' ? a.remind_at - b.remind_at : b.last_activity - a.last_activity));
 }
 
 const ONBOARD = `<div class="onboard"><h2>No agents yet</h2><p>Every folder you run Claude Code in shows up here as an agent, with its sessions sorted by who needs you.</p><p>Open a terminal in any project and run <code>claude</code>. The board picks it up within a few seconds.</p></div>`;
@@ -517,14 +517,14 @@ async function renameAgent(root) {
 }
 function sessionCtx(x, y, s) {
   const c = $('#ctx');
-  c.innerHTML = `<div data-do="open">${s.live ? 'Jump to' : 'Resume'}</div><div data-do="remind">${s.remind_at ? 'Change reminder…' : 'Remind me…'}</div><div data-do="done">Mark done</div>`;
+  c.innerHTML = `<div data-do="open">${s.live ? 'Jump to' : 'Resume'}</div><div data-do="star">${s.starred ? 'Unstar' : 'Star'}</div><div data-do="remind">${s.remind_at ? 'Change reminder…' : 'Remind me…'}</div><div data-do="done">Mark done</div>`;
   c.style.left = Math.min(x, window.innerWidth - 180) + 'px'; c.style.top = y + 'px';
   c.classList.add('open');
   c.querySelectorAll('[data-do]').forEach(el => el.addEventListener('click', async () => {
     c.classList.remove('open');
     if (el.dataset.do === 'open') return openSession(s.id);
     if (el.dataset.do === 'remind') return remindBox(s);
-    await api(`/api/sessions/${s.id}/done`, {});
+    await api(`/api/sessions/${s.id}/${el.dataset.do}`, {});
     refresh(true);
   }));
 }
@@ -622,7 +622,7 @@ function sessionCard(s, i) {
   const state = !i ? '' : i.building ? '<span class="tchip">reading…</span>' : i.stale ? '<span class="tchip" title="The session moved on since this was written">out of date</span>' : '';
   const replies = (c && c.options || []).map(o => `<button class="opt" data-reply="${esc(o)}" title="Copy, then jump to the session">${esc(o)}</button>`).join('');
   const blocked = !c && s.bucket === 'needs' && s.detail;
-  return {cls: `${s.bucket} ${i && i.stale ? 'stale' : ''}`, hint: `Click or Enter to ${s.live ? 'jump to it' : 'resume it'}`, isNew: i && i.new,
+  return {cls: `${s.bucket} ${s.starred ? 'starred' : ''} ${i && i.stale ? 'stale' : ''}`, hint: `Click or Enter to ${s.live ? 'jump to it' : 'resume it'}`, isNew: i && i.new,
           title: c ? c.headline : s.title, nd: c ? c.needs : blocked ? s.detail : i && i.building ? 'Reading the session…' : lastPara(s.preview), why: blocked,
           note: i && i.why, chips: chips + state + replies,
           side: `<span class="pill ${s.bucket}">${esc(s.label)}</span><span class="agotxt">${esc(s.ago)}</span><button class="rowdone" data-done="${s.id}" title="Mark done (d)">Done ✓</button>`};
@@ -805,6 +805,10 @@ function renderList() {
     // The first click re-renders the row, so a dblclick listener would sit on a replaced element.
     if (e.detail === 2 && CUR === c.dataset.id) return openSession(CUR);
     CUR = c.dataset.id; detailOpen = true; render();
+  }));
+  el.querySelectorAll('[data-id]').forEach(c => c.addEventListener('contextmenu', e => {
+    const s = DATA.sessions.find(x => x.id === c.dataset.id); if (!s) return;
+    e.preventDefault(); CUR = s.id; renderListSelection(); sessionCtx(e.clientX, e.clientY, s);
   }));
   el.querySelectorAll('[data-done]').forEach(b => b.addEventListener('click', async e => { e.stopPropagation(); await api(`/api/sessions/${b.dataset.done}/done`, {}); refresh(true); }));
   el.querySelector('[data-newhere]').addEventListener('click', e => newHere(e, SEL.agent, SEL.area));

@@ -264,6 +264,26 @@ class Rows(BoardCase):
         self.assertFalse(self.row()["starred"])
         self.assertNotIn(SID, self.board.persist.data["starred"])
 
+    def test_a_starred_session_notifies_each_turn_it_finishes_after_the_star(self):
+        turns = lambda: [k for k in state.needs_you(self.board._build(self.now)) if ":turn:" in k]
+        self.chat(age=10); self.live()
+        self.assertEqual(turns(), [])
+        self.board.persist.star(SID, True)
+        self.board.persist.data["starred"][SID] = self.now - 5
+        self.assertEqual(turns(), [])
+        self.chat(age=3)
+        first = turns()
+        self.assertEqual(len(first), 1)
+        self.chat(age=1)
+        self.assertNotIn(first[0], turns())
+        self.assertEqual(len(turns()), 1)
+
+    def test_marking_done_clears_the_star(self):
+        self.chat()
+        self.board.persist.star(SID, True)
+        self.board.persist.mark_done(SID)
+        self.assertNotIn(SID, self.board.persist.data["starred"])
+
     def test_launch_cwd_wins_over_a_later_cd(self):
         elsewhere = self.home / "work" / "legal"
         elsewhere.mkdir()

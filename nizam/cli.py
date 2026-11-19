@@ -387,7 +387,8 @@ def _api(path: str, body: dict | None = None) -> dict:
         return json.loads(e.read() or b"{}")
 
 
-def remind_cmd(when: list[str], session: str | None, close: bool = False) -> int:
+def _board_session(session: str | None, shows: str) -> dict | int:
+    """The board's row for this session, or the exit code after saying why there is none."""
     import urllib.error
     sid = session or providers.current_session_id()
     if not sid:
@@ -397,14 +398,35 @@ def remind_cmd(when: list[str], session: str | None, close: bool = False) -> int
         rows = _api("/api/board")["sessions"]
     except (OSError, urllib.error.URLError):
         # The app owns state.json in memory; a write behind its back would be lost on its next save.
-        print("Nizam is not running, so nothing would show the reminder; start it with: nizam app --detach",
+        print(f"Nizam is not running, so nothing would show the {shows}; start it with: nizam app --detach",
               file=sys.stderr)
         return 1
     hits = [s for s in rows if s["id"] == sid] or [s for s in rows if s["id"].startswith(sid)]
     if len(hits) != 1:
         print(f"no session {sid} on the board" if not hits else f"{sid} matches {len(hits)} sessions", file=sys.stderr)
         return 1
-    s = hits[0]
+    return hits[0]
+
+
+def star_cmd(action: str | None, session: str | None) -> int:
+    s = _board_session(session, "star")
+    if isinstance(s, int):
+        return s
+    if action == "show":
+        print(f"'{s['title']}' is " + ("starred" if s["starred"] else "not starred"))
+        return 0
+    on = action != "off"
+    _api(f"/api/sessions/{s['id']}/star", {"on": on})
+    print(f"starred '{s['title']}': it comes first on the board, the badge shows a ★ while it waits on the user, "
+          f"and each turn it finishes notifies them. Marking it done clears the star."
+          if on else f"unstarred '{s['title']}'")
+    return 0
+
+
+def remind_cmd(when: list[str], session: str | None, close: bool = False) -> int:
+    s = _board_session(session, "reminder")
+    if isinstance(s, int):
+        return s
     if not when:
         print(f"{s['title']}: " + (f"reminder {s['remind_label']}" + (" (due now)" if s["remind_due"] else "")
                                    if s["remind_at"] else "no reminder"))
@@ -475,6 +497,9 @@ def main(argv: list[str] | None = None) -> int:
     rm.add_argument("--session", help="a session id or its first characters (default: the session this runs in)")
     rm.add_argument("--close", action="store_true",
                     help="also end the session and close its terminal window until then")
+    st = sub.add_parser("star", help="star this session so it comes first and notifies each turn: on | off | show")
+    st.add_argument("action", nargs="?", choices=("on", "off", "show"), default="on")
+    st.add_argument("--session", help="a session id or its first characters (default: the session this runs in)")
     fu = sub.add_parser("followups", help="hour [<time>]: when follow-ups without a time come up (default 10:00)")
     fu.add_argument("action", choices=("hour",))
     fu.add_argument("when", nargs="*", help="10am, 20:00, 8pm")
@@ -508,6 +533,8 @@ def main(argv: list[str] | None = None) -> int:
         return request_cmd(a.action, a.args)
     if a.cmd == "remind":
         return remind_cmd(a.when, a.session, a.close)
+    if a.cmd == "star":
+        return star_cmd(a.action, a.session)
     if a.cmd == "followups":
         return followups_cmd(a.action, a.when)
     if a.cmd == "telegram":

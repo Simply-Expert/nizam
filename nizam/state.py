@@ -192,6 +192,7 @@ class Persisted:
         with self.lock:
             self.data["done"][sid] = {"at": at or time.time(), "by": by}
             self.data.get("reminders", {}).pop(sid, None)
+            self.data.get("starred", {}).pop(sid, None)
             self.save()
 
     def reopen(self, sid: str) -> None:
@@ -336,14 +337,18 @@ def _ago(secs: float) -> str:
 
 
 def needs_you(snap: dict) -> dict[str, dict]:
-    """What newly asks for the person, keyed so the same thing keeps its key: blocked sessions,
-    timed follow-ups due today, and routine runs that failed or found something."""
+    """What newly asks for the person, keyed so the same thing keeps its key: blocked sessions, each
+    finished turn of a starred one, timed follow-ups due today, and routine runs that failed or found something."""
     names = {a["root"]: a["display_name"] for a in snap["agents"]}
     out: dict[str, dict] = {}
     for s in snap["sessions"]:
         if s["bucket"] == "needs":
             out[s["id"]] = {"kind": "session", "agent": s["agent"], "agent_name": s["agent_name"], "label": s["label"],
                             "title": s["title"], "target": s["id"], "url": s.get("remote_url")}
+        elif s["bucket"] == "inbox" and s["starred"] and s["last_activity"] > s["starred_at"]:
+            out[f"{s['id']}:turn:{s['last_activity']}"] = {
+                "kind": "session", "agent": s["agent"], "agent_name": s["agent_name"], "label": "★ Your turn",
+                "title": s["title"], "target": s["id"], "url": s.get("remote_url")}
     for f in snap.get("followups", []):
         # A time on a follow-up asks to be noticed then.
         if f["time"] and f["due"] == "today" and not f.get("in_session"):
@@ -484,6 +489,7 @@ class Board:
                 "waiting": waiting,
                 "done": done,
                 "starred": sid in starred,
+                "starred_at": starred.get(sid),
                 "remind_at": remind["at"] if remind else None,
                 "remind_label": remind_label,
                 "remind_due": bool(remind and now >= remind["at"]),

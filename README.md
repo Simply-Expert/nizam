@@ -162,7 +162,11 @@ last message was wrong too often; you are the only one who knows a task is over.
   dismiss it, even if later runs find nothing new. **Run now** starts one by hand,
   **Open last run** resumes that run as a normal session, **Sync schedule** installs a new schedule.
 - **Clear** marks every *Closed* session in the current view as done; hovering a Closed row shows a Done button.
-- **Star** a session from its title in the detail pane; it gets a ★ and a gold edge in the list.
+- **Star** the session that matters most right now: from its title in the detail pane (or `s`),
+  by right-clicking it on the board or in the badge's list, or with `nizam star` from inside it. It
+  comes first with a ★ and a gold edge, the badge shows a gold ★ while it waits on you, and each
+  turn it finishes notifies you, where other sessions only notify when blocked. Marking it done
+  clears the star; `nizam star off` does too.
 - **Remind me** (⏰ in the detail pane, or `z`) brings a session back at a time: `1:30pm`, `14:00`,
   `+45m`, `tomorrow 9am`, `fri 10:00`, or one of the quick picks. Until then it waits under *Later*
   and stays out of the counts. At that time it moves to *Needs you* and you get a notification.

@@ -7,9 +7,9 @@ from nizam import home
 NOW = datetime(2026, 11, 9, 15, 0).timestamp()
 
 
-def session(sid, bucket="inbox", age=60.0, live=True, remind_at=None):
+def session(sid, bucket="inbox", age=60.0, live=True, remind_at=None, starred=False):
     return {"id": sid, "agent": "/a", "title": sid, "bucket": bucket, "live": live, "last_activity": NOW - age,
-            "remind_at": remind_at, "remind_label": ""}
+            "remind_at": remind_at, "remind_label": "", "starred": starred}
 
 
 def followup(fid, due, at, in_session=False):
@@ -37,6 +37,11 @@ class Queue(unittest.TestCase):
         got = self.ids(sessions=[session("turn"), session("blocked", "needs")],
                        routines=[routine("found", attention={"run_id": "1"}), routine("broken", failing=True)])
         self.assertEqual(got, ["blocked", "r:broken", "r:found", "turn"])
+
+    def test_a_starred_session_comes_first(self):
+        got = self.ids(sessions=[session("blocked", "needs"), session("turn"), session("mine", starred=True)],
+                       routines=[routine("broken", failing=True)])
+        self.assertEqual(got, ["mine", "blocked", "r:broken", "turn"])
 
     def test_what_is_already_in_hand_stays_out(self):
         got = self.ids(sessions=[session("working", "working"), session("exited", "inbox", live=False)],

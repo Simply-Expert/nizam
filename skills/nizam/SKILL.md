@@ -1,6 +1,6 @@
 ---
 name: nizam
-description: Nizam (نظام) — manage this agent's Areas and Follow-ups as seen on the Nizam board. Use when the user says "nizam area new X", "create an area for X", "list areas", "archive the X area", "promote this folder to an area", "add a follow-up", "remind us to X on <date>", "what follow-ups are due", "that follow-up is done", "make follow-ups come up at 8pm", "remind me about this at 1:30", "bring this session back tomorrow at 9", "nizam routine new X", "make this a nizam routine", "migrate/move this launchd job (or cron job) to nizam routines", "run this script on a schedule with nizam", "list this agent's routines", "why did the X routine fail", "any requests?", "check requests from other agents", "hand this to the X agent", "leave a request for X", "let agent X send requests to agent Y", "which agents can this one write to", "wake the X agent and work it out with it", "talk to the X agent", or asks where a topic's instructions and journal should live. An Area is a sub-folder carrying INSTRUCTIONS.md (durable rules) and JOURNAL-<year>.md (dated log). Folders without INSTRUCTIONS.md (data, scripts, shared) are not areas. A Routine is routines/<name>.md: a recurring headless run on this Mac, scheduled by launchd. Not for Claude Code's own cloud routines (/schedule) or /loop.
+description: Nizam (نظام) — manage this agent's Areas and Follow-ups as seen on the Nizam board. Use when the user says "nizam area new X", "create an area for X", "list areas", "archive the X area", "promote this folder to an area", "add a follow-up", "remind us to X on <date>", "what follow-ups are due", "that follow-up is done", "make follow-ups come up at 8pm", "remind me about this at 1:30", "bring this session back tomorrow at 9", "star this session", "star it", "unstar this", "nizam routine new X", "make this a nizam routine", "migrate/move this launchd job (or cron job) to nizam routines", "run this script on a schedule with nizam", "list this agent's routines", "why did the X routine fail", "any requests?", "check requests from other agents", "hand this to the X agent", "leave a request for X", "let agent X send requests to agent Y", "which agents can this one write to", "wake the X agent and work it out with it", "talk to the X agent", or asks where a topic's instructions and journal should live. An Area is a sub-folder carrying INSTRUCTIONS.md (durable rules) and JOURNAL-<year>.md (dated log). Folders without INSTRUCTIONS.md (data, scripts, shared) are not areas. A Routine is routines/<name>.md: a recurring headless run on this Mac, scheduled by launchd. Not for Claude Code's own cloud routines (/schedule) or /loop.
 ---
 
 # Nizam
@@ -149,6 +149,20 @@ It finds the current session on its own. Reply with the time it confirms. It cle
 user writes to the session again, jumps back to it once it is due, or marks it done. It only works
 while the Nizam app is running, and only up to a week ahead; for anything further out, offer a
 follow-up, which can carry a time too.
+
+## `star`: make this conversation the one to watch
+A star marks **this session** as the one that matters most right now. On the board it comes first with
+a ★; the floating badge shows a gold ★ while it waits on the user; each turn it finishes sends a
+notification (Mac, and Telegram when that is on), where other sessions only notify when blocked.
+
+```
+nizam star          # star this session
+nizam star off      # unstar it
+nizam star show     # is it starred?
+```
+
+Star only when the user asks ("star this", "pin this session", "this one matters, tell me when it's
+done"). It clears itself when the session is marked done. Reply that it is starred and what that does.
 
 ## Rules
 - Never put dated events in INSTRUCTIONS.md, and never leave settled rules only in the journal.

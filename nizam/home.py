@@ -24,10 +24,11 @@ def _queue(snap: dict, tri: dict) -> list[dict]:
     rows: list[tuple[tuple, dict]] = []
     for s in waiting(snap):
         tier = BLOCKED if s["bucket"] == "needs" else YOUR_TURN
-        rows.append(((tier, pos.get(s["id"], len(pos)), -s["last_activity"]), {"id": s["id"], "kind": "session"}))
+        rows.append(((not s.get("starred"), tier, pos.get(s["id"], len(pos)), -s["last_activity"]),
+                     {"id": s["id"], "kind": "session"}))
     for r in snap.get("routines", []):
         if r["failing"] or r["attention"]:
-            rows.append(((ROUTINE, not r["failing"], r["name"]), {"id": r["id"], "kind": "routine"}))
+            rows.append(((True, ROUTINE, not r["failing"], r["name"]), {"id": r["id"], "kind": "routine"}))
     return [item for _, item in sorted(rows, key=lambda r: r[0])]
 
 

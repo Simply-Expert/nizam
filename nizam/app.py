@@ -80,6 +80,7 @@ LIMIT_STALE_SECS = 30 * 60   # headless runs spend the plan without reporting it
 
 # bucket -> (SF Symbol, fallback glyph, colour, tooltip wording)
 SEGMENTS = {
+    "star": ("star.fill", "★", NSColor.systemYellowColor, "{n} starred waiting on you"),
     "needs": ("hand.raised.fill", "✋", NSColor.systemRedColor, "{n} waiting on you"),
     "working": ("hourglass", "⏳", NSColor.systemOrangeColor, "{n} working"),
     "inbox": ("arrowshape.turn.up.left.fill", "↩", NSColor.systemGreenColor, "{n} your turn to reply"),
@@ -88,7 +89,7 @@ SEGMENTS = {
 
 
 def _shown(counts: dict) -> list[str]:
-    return [k for k in SEGMENTS if counts[k] or k == "inbox"]
+    return [k for k in SEGMENTS if counts.get(k) or k == "inbox"]
 
 
 def _symbol(symbol: str, color, font):
@@ -183,7 +184,7 @@ def _limit_rows(limits: list) -> list[dict]:
 
 
 def _legend(counts: dict) -> str:
-    return " · ".join(SEGMENTS[k][3].format(n=counts[k]) for k in _shown(counts))
+    return " · ".join(SEGMENTS[k][3].format(n=counts.get(k, 0)) for k in _shown(counts))
 
 
 def _bundled() -> bool:
@@ -321,7 +322,7 @@ class BadgeView(NSView):
     @objc.python_method
     def segments(self):
         font = NSFont.systemFontOfSize_weight_(12, NSFontWeightSemibold)
-        out = [(k, _segment(k, self.counts[k], font, True)) for k in _shown(self.counts)]
+        out = [(k, _segment(k, self.counts.get(k, 0), font, True)) for k in _shown(self.counts)]
         if self.limits:
             out.append((LIMITS, _limits_segment(self.limits, font)))
         if self.has_update:
@@ -499,6 +500,14 @@ class HoverListView(NSView):
         i = self._row_at(event)
         if i >= 0:
             self.delegate.list_picked(self.rows[i])
+
+    def rightMouseDown_(self, event):
+        pass
+
+    def rightMouseUp_(self, event):
+        i = self._row_at(event)
+        if i >= 0:
+            self.delegate.list_star(self.rows[i])
 
     def drawRect_(self, rect):
         if not self.bucket:
@@ -680,13 +689,17 @@ class AppDelegate(NSObject):
         for s in snap["sessions"]:
             if s["bucket"] in items:
                 c = cards.get(s["id"])
-                items[s["bucket"]].append({"id": s["id"], "title": c["headline"] if c else s["title"], "session": s,
+                title = c["headline"] if c else s["title"]
+                items[s["bucket"]].append({"id": s["id"], "title": f"★ {title}" if s["starred"] else title, "session": s,
                                            "sub": f"{s['agent_name']} · {c['needs']}" if c
                                            else f"{s['agent_name']} · {s['label']} · {s['ago']}"})
         if view.get("enabled"):
             rank = {i["id"]: n for n, i in enumerate(view["items"])}
             for b in ("needs", "inbox"):
                 items[b].sort(key=lambda r: rank.get(r["id"], len(rank)))
+        for b in ("needs", "inbox"):
+            items[b].sort(key=lambda r: not r["session"]["starred"])
+        items["star"] = [r for b in ("needs", "inbox") for r in items[b] if r["session"]["starred"]]
         for f in snap.get("followups", []):
             if f["due"] != "upcoming" and not f.get("in_session"):
                 when = f["when"] if f["due"] == "today" else f"{-f['days']}d overdue"
@@ -747,7 +760,7 @@ class AppDelegate(NSObject):
         for i, k in enumerate(_shown(c)):
             if i:
                 title.appendAttributedString_(NSAttributedString.alloc().initWithString_attributes_("   ", {NSFontAttributeName: font}))
-            title.appendAttributedString_(_segment(k, c[k], font, False))
+            title.appendAttributedString_(_segment(k, c.get(k, 0), font, False))
         self.status.button().setAttributedTitle_(title)
         tip = f"Nizam نظام — {_legend(c)}\nClick for the board, right-click for options"
         if self.update_info:
@@ -847,6 +860,15 @@ class AppDelegate(NSObject):
         self._show_board(self.badge_view)
         if row["id"]:
             self.vc.select(row["id"])
+
+    @objc.python_method
+    def list_star(self, row):
+        s = row.get("session")
+        if not s:
+            return
+        self.board.persist.star(s["id"], not s["starred"])
+        self.board.invalidate()
+        self.hide_list()
 
     @objc.python_method
     def _open_session(self, s):
