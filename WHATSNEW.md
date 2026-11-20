@@ -2,6 +2,30 @@
 
 The newest release is at the top.
 
+## 0.6.0 · 20 Nov 2026
+
+- **Team chip: your agents in one strip across a screen.** A second floating window, made for a
+  portrait screen under your terminals: one segment per agent with something going on, in the
+  board's order, showing what is most pressing (blocked, a routine that needs a look, working, or
+  your turn). Quiet agents shrink to their avatar, with a red bubble when follow-ups are due.
+  Hover a segment for its open sessions, routines that need a look and due follow-ups, each with
+  its own icon, plus *New session* to start Claude there. Click it for that agent's page on the
+  board. Drag it to any screen and it fills that screen's width; the badge keeps its own place.
+  Turn it on or off from the menu (*Team chip*).
+- **Star a session.** A starred session comes first with a ★ on Home, agent pages and the badge's
+  lists. The badge shows a gold ★ count while it is blocked or your turn, and each turn it
+  finishes notifies on the Mac and Telegram. Star it from a right-click on the badge or board, or
+  `nizam star` from inside the session ("star this"). Marking it done clears the star.
+- **Follow-ups and requests get their own page.** They moved off Home to the page that was *All
+  agents*, with every agent's follow-ups and the requests between agents, late first. Home keeps
+  blocked sessions, routines that need you and finished turns; its *Coming up* strip shows
+  snoozed sessions and the next routine runs.
+- **Runs started by a script stay off the board.** Sessions started with `claude -p` or the Agent
+  SDK that nobody typed into are hidden, like a routine's runs. Resume one by hand and it shows
+  as usual.
+- **An agent moved behind a symlink keeps its sessions.** Sessions started under the old path now
+  land on the moved agent instead of a separate one.
+
 ## 0.5.0 · 17 Nov 2026
 
 - **Home: everything waiting on you, in one list.** The board opens on a numbered list in the order
