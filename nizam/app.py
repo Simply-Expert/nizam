@@ -26,7 +26,7 @@ from AppKit import (
     NSTrackingArea, NSMutableParagraphStyle, NSParagraphStyleAttributeName, NSWindow,
     NSGraphicsContext, NSAffineTransform, NSZeroRect, NSCompositingOperationSourceOver,
 )
-from Foundation import NSBundle, NSURLRequest, NSPointInRect
+from Foundation import NSBundle, NSURLRequest, NSPointInRect, NSNotificationCenter
 from UserNotifications import (
     UNUserNotificationCenter, UNMutableNotificationContent, UNNotificationRequest, UNNotificationSound,
     UNAuthorizationOptionAlert, UNAuthorizationOptionSound, UNNotificationPresentationOptionBanner,
@@ -35,7 +35,7 @@ from UserNotifications import (
 from WebKit import WKWebView, WKWebViewConfiguration, WKUserContentController
 import objc
 
-from . import providers, telegram, terminal, triage, update
+from . import chip, providers, telegram, terminal, triage, update
 from .paths import NIZAM_DIR, ensure_dirs
 from .cli import start_update
 from .launch import BUNDLE_ID, NOTIFICATION_SOUND, PID_FILE, QUIT_FLAG, app_running, login_enabled, set_login
@@ -68,8 +68,12 @@ NSTrackingInVisibleRect = 1 << 9
 NSLineBreakByTruncatingTail = 4
 BADGE_H = 28
 LIST_W, LIST_ROW_H, LIST_HEAD_H, LIST_PAD, LIST_MAX = 300, 38, 26, 6, 10
+LIST_ICON = 14
 HOVER_LINGER_SECS = 0.3
 SPIN_SECS, SPIN_STEP = 1 / 30, 12
+CHIP_H, CHIP_AV, CHIP_MARGIN, CHIP_GAP, CHIP_COMPACT_W, CHIP_LIST_W = 52, 34, 10, 4, 46, 380
+CHIP_NEEDS_WEIGHT = 1.15
+CHIP = "chip"
 LIMITS = "limits"
 UPDATE = "update"
 LIST_HEADS = {LIMITS: "Plan usage", UPDATE: "Update"}
@@ -85,6 +89,18 @@ SEGMENTS = {
     "working": ("hourglass", "⏳", NSColor.systemOrangeColor, "{n} working"),
     "inbox": ("arrowshape.turn.up.left.fill", "↩", NSColor.systemGreenColor, "{n} your turn to reply"),
     "due": ("diamond.fill", "◆", NSColor.systemPurpleColor, "{n} follow-ups due"),
+}
+
+
+ROW_ICONS = {
+    "needs": ("hand.raised.fill", "✋", NSColor.systemRedColor),
+    "working": ("hourglass", "⏳", NSColor.systemOrangeColor),
+    "inbox": ("arrowshape.turn.up.left.fill", "↩", NSColor.systemGreenColor),
+    "later": ("clock.fill", "◷", NSColor.systemPurpleColor),
+    "closed": ("moon.zzz.fill", "☾", NSColor.tertiaryLabelColor),
+    "followup": ("diamond.fill", "◆", NSColor.systemPurpleColor),
+    "routine": ("exclamationmark.triangle.fill", "⚠", NSColor.systemRedColor),
+    "new": ("plus", "+", NSColor.systemBlueColor),
 }
 
 
@@ -249,9 +265,9 @@ class BoardVC(NSViewController, protocols=[objc.protocolNamed("WKScriptMessageHa
             NSWorkspace.sharedWorkspace().openURL_(NSURL.URLWithString_(str(body["open"])))
 
     @objc.python_method
-    def reload(self, select=None, settings=False):
+    def reload(self, select=None, settings=False, agent=None):
         url = (f"http://127.0.0.1:{self.port}/?embed=1" + (f"&select={quote(select, safe='')}" if select else "")
-               + ("&settings=1" if settings else ""))
+               + (f"&agent={quote(agent, safe='')}" if agent else "") + ("&settings=1" if settings else ""))
         self.web.loadRequest_(NSURLRequest.requestWithURL_(NSURL.URLWithString_(url)))
 
     @objc.python_method
@@ -267,6 +283,13 @@ class BoardVC(NSViewController, protocols=[objc.protocolNamed("WKScriptMessageHa
             self.reload(item_id)
         else:
             self.web.evaluateJavaScript_completionHandler_(f"nizamSelect({json.dumps(item_id)})", None)
+
+    @objc.python_method
+    def show_agent(self, root):
+        if self.web.isLoading():
+            self.reload(agent=root)
+        else:
+            self.web.evaluateJavaScript_completionHandler_(f"nizamAgent({json.dumps(root)})", None)
 
     @objc.python_method
     def refresh(self):
@@ -537,8 +560,199 @@ class HoverListView(NSView):
                 NSColor.labelColor().colorWithAlphaComponent_(0.1).setFill()
                 NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
                     NSMakeRect(4, y, b.size.width - 8, LIST_ROW_H), 6, 6).fill()
-            text(row["title"], 12, y + 4, 12, 0.0, NSColor.labelColor())
-            text(row["sub"], 12, y + 20, 10, 0.0, NSColor.secondaryLabelColor())
+            tx = 12
+            if row.get("icon") in ROW_ICONS:
+                symbol, glyph, color_fn = ROW_ICONS[row["icon"]]
+                img = _symbol(symbol, color_fn(), NSFont.systemFontOfSize_(11))
+                box = NSMakeRect(12, y + (LIST_ROW_H - LIST_ICON) / 2, LIST_ICON, LIST_ICON)
+                if img is None:
+                    text(glyph, 12, box.origin.y - 1, 11, 0.0, color_fn())
+                else:
+                    sz = img.size()
+                    img.drawInRect_fromRect_operation_fraction_respectFlipped_hints_(
+                        NSMakeRect(box.origin.x + (LIST_ICON - sz.width) / 2, box.origin.y + (LIST_ICON - sz.height) / 2,
+                                   sz.width, sz.height), NSZeroRect, NSCompositingOperationSourceOver, 1.0, True, None)
+                tx = 12 + LIST_ICON + 9
+            text(row["title"], tx, y + 4, 12, 0.0, NSColor.labelColor())
+            text(row["sub"], tx, y + 20, 10, 0.0, NSColor.secondaryLabelColor())
+
+
+CHIP_STATE_COLORS = {"needs": NSColor.systemRedColor, "working": NSColor.systemOrangeColor,
+                     "inbox": NSColor.systemGreenColor, "quiet": NSColor.tertiaryLabelColor}
+
+
+def _hex_color(hex_str, alpha=1.0):
+    r, g, b = (int(hex_str[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    return NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, alpha)
+
+
+def _draw_text(s, rect, size, weight, color):
+    para = NSMutableParagraphStyle.alloc().init()
+    para.setLineBreakMode_(NSLineBreakByTruncatingTail)
+    NSAttributedString.alloc().initWithString_attributes_(s, {
+        NSFontAttributeName: NSFont.systemFontOfSize_weight_(size, weight),
+        NSForegroundColorAttributeName: color,
+        NSParagraphStyleAttributeName: para,
+    }).drawInRect_(rect)
+
+
+def _draw_centered(s, cx, cy, size, weight, color):
+    """Centres the capitals on (cx, cy), not the line box, which carries descender room below."""
+    font = NSFont.systemFontOfSize_weight_(size, weight)
+    a = NSAttributedString.alloc().initWithString_attributes_(s, {
+        NSFontAttributeName: font, NSForegroundColorAttributeName: color})
+    a.drawAtPoint_(NSMakePoint(cx - a.size().width / 2, cy - font.capHeight() / 2 + font.descender()))
+
+
+class TeamChipView(NSView):
+    """A full-width capsule, one segment per agent. Hover a segment for its sessions and follow-ups,
+    click it for that agent's page on the board, drag it to another screen to fill that one."""
+    delegate = objc.ivar()
+    agents = objc.ivar()
+    loaded = objc.ivar()
+    hot = objc.ivar()
+    _spans = objc.ivar()
+    _down = objc.ivar()
+    _dragged = objc.ivar()
+
+    def initWithFrame_delegate_(self, frame, delegate):
+        self = objc.super(TeamChipView, self).initWithFrame_(frame)
+        if self is None:
+            return None
+        self.delegate = delegate
+        self.agents = []
+        self.loaded = False
+        self._spans = []
+        self._dragged = False
+        return self
+
+    def acceptsFirstMouse_(self, event):
+        return True
+
+    def updateTrackingAreas(self):
+        objc.super(TeamChipView, self).updateTrackingAreas()
+        _track_hover(self)
+
+    @objc.python_method
+    def _layout(self):
+        agents = list(self.agents)
+        if not agents:
+            return []
+        b = self.bounds()
+        compact = sum(a["compact"] for a in agents)
+        weights = sum(CHIP_NEEDS_WEIGHT if a["state"] == "needs" else 1 for a in agents if not a["compact"])
+        free = b.size.width - 12 - compact * CHIP_COMPACT_W - CHIP_GAP * (len(agents) - 1)
+        spans, x = [], 6.0
+        for a in agents:
+            w = CHIP_COMPACT_W if a["compact"] else free * (CHIP_NEEDS_WEIGHT if a["state"] == "needs" else 1) / weights
+            spans.append((a, x, x + w))
+            x += w + CHIP_GAP
+        return spans
+
+    @objc.python_method
+    def _span_at(self, event):
+        x = self.convertPoint_fromView_(event.locationInWindow(), None).x
+        return next(((a, x0, x1) for a, x0, x1 in self._spans if x0 <= x <= x1 + CHIP_GAP), (None, 0, 0))
+
+    def drawRect_(self, rect):
+        b = self.bounds()
+        path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(b, b.size.height / 2, b.size.height / 2)
+        NSColor.windowBackgroundColor().colorWithAlphaComponent_(0.94).setFill()
+        path.fill()
+        NSColor.separatorColor().setStroke()
+        path.setLineWidth_(1)
+        path.stroke()
+        self._spans = self._layout()
+        if not self._spans:
+            _draw_centered("All caught up" if self.loaded else "Loading…", b.size.width / 2, b.size.height / 2, 13, 0.0,
+                           NSColor.secondaryLabelColor())
+            return
+        mid = b.size.height / 2
+        for a, x0, x1 in self._spans:
+            seg = NSMakeRect(x0, 4, x1 - x0, b.size.height - 8)
+            pill = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(seg, seg.size.height / 2, seg.size.height / 2)
+            if a["state"] == "needs":
+                NSColor.systemRedColor().colorWithAlphaComponent_(0.14).setFill()
+                pill.fill()
+                NSColor.systemRedColor().colorWithAlphaComponent_(0.8).setStroke()
+                pill.setLineWidth_(1)
+                pill.stroke()
+            elif a["root"] == self.hot:
+                NSColor.labelColor().colorWithAlphaComponent_(0.08).setFill()
+                pill.fill()
+            av = NSMakeRect(x0 + 4, mid - CHIP_AV / 2, CHIP_AV, CHIP_AV)
+            _hex_color(a["color"], 0.45 if a["compact"] else 1.0).setFill()
+            NSBezierPath.bezierPathWithOvalInRect_(av).fill()
+            _draw_centered(a["initials"], av.origin.x + CHIP_AV / 2, mid, 12, NSFontWeightSemibold,
+                           NSColor.whiteColor().colorWithAlphaComponent_(0.75 if a["compact"] else 1.0))
+            if a["compact"]:
+                if a["due"]:
+                    bubble = NSMakeRect(av.origin.x + CHIP_AV - 12, av.origin.y + CHIP_AV - 10, 16, 16)
+                    NSColor.systemRedColor().setFill()
+                    NSBezierPath.bezierPathWithOvalInRect_(bubble).fill()
+                    _draw_centered(str(a["due"]), bubble.origin.x + 8, bubble.origin.y + 8, 10,
+                                   NSFontWeightSemibold, NSColor.whiteColor())
+                continue
+            dot = NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(av.origin.x + CHIP_AV - 10, av.origin.y - 1, 11, 11))
+            CHIP_STATE_COLORS[a["state"]]().setFill()
+            dot.fill()
+            NSColor.windowBackgroundColor().setStroke()
+            dot.setLineWidth_(2)
+            dot.stroke()
+            tx = av.origin.x + CHIP_AV + 9
+            right = x1 - 12
+            if a["due"]:
+                _draw_centered(f"{a['due']} due", right - 22, mid, 10.5, NSFontWeightSemibold, NSColor.systemRedColor())
+                right -= 50
+            _draw_text(a["name"], NSMakeRect(tx, mid, right - tx, 18), 13, NSFontWeightSemibold, NSColor.labelColor())
+            status_color = NSColor.secondaryLabelColor() if a["state"] == "quiet" else CHIP_STATE_COLORS[a["state"]]()
+            _draw_text(a["status"], NSMakeRect(tx, mid - 16, right - tx, 15), 11, 0.0, status_color)
+
+    @objc.python_method
+    def _hover(self, event):
+        a, x0, x1 = self._span_at(event)
+        root = a["root"] if a else None
+        if root != self.hot:
+            self.hot = root
+            self.setNeedsDisplay_(True)
+        if a:
+            self.delegate.chip_hover(root, (x0 + x1) / 2)
+
+    def mouseEntered_(self, event):
+        self._hover(event)
+
+    def mouseMoved_(self, event):
+        self._hover(event)
+
+    def mouseExited_(self, event):
+        self.hot = None
+        self.setNeedsDisplay_(True)
+        self.delegate.hover_left()
+
+    def mouseDown_(self, event):
+        self.delegate.hide_chip_list()
+        self._down = event.locationInWindow()
+        self._dragged = False
+
+    def mouseDragged_(self, event):
+        loc = event.locationInWindow()
+        if not self._dragged and abs(loc.x - self._down.x) < 3 and abs(loc.y - self._down.y) < 3:
+            return
+        self._dragged = True
+        p = NSEvent.mouseLocation()
+        self.window().setFrameOrigin_(NSMakePoint(p.x - self._down.x, p.y - self._down.y))
+
+    def mouseUp_(self, event):
+        if self._dragged:
+            self.delegate.chipMoved_(None)
+            return
+        a = self._span_at(event)[0]
+        if a:
+            self.delegate.chip_clicked(a["root"])
+
+    def rightMouseDown_(self, event):
+        self.delegate.hide_chip_list()
+        self.delegate.showMenuAt_(self)
 
 
 def _floating_panel(width, height):
@@ -565,11 +779,37 @@ def make_badge_panel(view_delegate):
     return panel, view
 
 
-def make_list_panel(view_delegate):
-    panel = _floating_panel(LIST_W, LIST_HEAD_H)
-    view = HoverListView.alloc().initWithFrame_delegate_(NSMakeRect(0, 0, LIST_W, LIST_HEAD_H), view_delegate)
+def make_list_panel(view_delegate, width=LIST_W):
+    panel = _floating_panel(width, LIST_HEAD_H)
+    view = HoverListView.alloc().initWithFrame_delegate_(NSMakeRect(0, 0, width, LIST_HEAD_H), view_delegate)
     panel.setContentView_(view)
     return panel, view
+
+
+def make_chip_panel(view_delegate):
+    panel = _floating_panel(600, CHIP_H)
+    view = TeamChipView.alloc().initWithFrame_delegate_(NSMakeRect(0, 0, 600, CHIP_H), view_delegate)
+    view.setAutoresizingMask_(2 | 16)   # width and height follow the panel
+    panel.setContentView_(view)
+    return panel, view
+
+
+def _chip_frame(screen, y=None):
+    """Spans the screen's width; keeps the height you dropped it at, or sits at the bottom."""
+    vf = screen.visibleFrame()
+    lo, hi = vf.origin.y + CHIP_MARGIN, vf.origin.y + vf.size.height - CHIP_H - CHIP_MARGIN
+    y = lo if y is None else min(max(y, lo), hi)
+    return NSMakeRect(vf.origin.x + CHIP_MARGIN, y, vf.size.width - 2 * CHIP_MARGIN, CHIP_H)
+
+
+def _screen_at(point):
+    return next((s for s in NSScreen.screens() if NSPointInRect(point, s.frame())), None)
+
+
+def _default_chip_screen():
+    """A portrait screen if there is one: that is where a strip across the bottom costs least."""
+    tall = [s for s in NSScreen.screens() if s.frame().size.height > s.frame().size.width]
+    return tall[0] if tall else NSScreen.mainScreen()
 
 
 class AppDelegate(NSObject):
@@ -593,6 +833,13 @@ class AppDelegate(NSObject):
     hover_x = objc.ivar()
     update_info = objc.ivar()
     updating = objc.ivar()
+    chip = objc.ivar()
+    chip_view = objc.ivar()
+    chip_list_panel = objc.ivar()
+    chip_list_view = objc.ivar()
+    chip_root = objc.ivar()
+    chip_x = objc.ivar()
+    chip_cards = objc.ivar()
 
     def initWithBoard_port_(self, board, port):
         self = objc.super(AppDelegate, self).init()
@@ -621,9 +868,16 @@ class AppDelegate(NSObject):
         self.popover.setDelegate_(self)
         self.badge, self.badge_view = make_badge_panel(self)
         self.list_panel, self.list_view = make_list_panel(self)
+        self.chip, self.chip_view = make_chip_panel(self)
+        self.chip_list_panel, self.chip_list_view = make_list_panel(self, CHIP_LIST_W)
         self._restore_badge()
+        self._restore_chip()
         if self.board.persist.data["prefs"].get("badge", True):
             self.badge.orderFrontRegardless()
+        if self.board.persist.data["prefs"].get("chip"):
+            self.chip.orderFrontRegardless()
+        NSNotificationCenter.defaultCenter().addObserver_selector_name_object_(
+            self, "screensChanged:", "NSApplicationDidChangeScreenParametersNotification", None)
         if _bundled():
             UNUserNotificationCenter.currentNotificationCenter().setDelegate_(self)
         NSWorkspace.sharedWorkspace().notificationCenter().addObserver_selector_name_object_(
@@ -721,6 +975,11 @@ class AppDelegate(NSObject):
         self.badge_view.limits = limits
         self.badge_view.has_update = bool(items[UPDATE])
         self.resize_badge()
+        self.chip_cards = cards
+        self.chip_view.agents = chip.agents(snap)
+        self.chip_view.loaded = True
+        self.chip_view.setNeedsDisplay_(True)
+        self._sync_chip_list()
         new_ids = set(needs_now) - self.seen_needs
         if self.seeded and new_ids and self._notifications_on():
             if len(new_ids) == 1:
@@ -780,9 +1039,72 @@ class AppDelegate(NSObject):
     def spaceChanged_(self, _note):
         # An all-Spaces panel keeps its hover tracking only on the Space it was ordered in.
         self.hide_list()
-        if self.badge.isVisible():
-            self.badge.orderFrontRegardless()
-            _track_hover(self.badge_view)
+        self.hide_chip_list()
+        for panel, view in ((self.badge, self.badge_view), (self.chip, self.chip_view)):
+            if panel.isVisible():
+                panel.orderFrontRegardless()
+                _track_hover(view)
+
+    @objc.python_method
+    def _restore_chip(self):
+        pos = self.board.persist.data["prefs"].get("chip_pos")
+        screen = pos and _screen_at(NSMakePoint(pos[0] + CHIP_H, pos[1] + CHIP_H / 2))
+        self.chip.setFrame_display_(_chip_frame(screen, pos[1]) if screen else _chip_frame(_default_chip_screen()), True)
+
+    def screensChanged_(self, _note):
+        self.hide_chip_list()
+        self._restore_chip()
+
+    def chipMoved_(self, _):
+        screen = _screen_at(NSEvent.mouseLocation()) or self.chip.screen() or NSScreen.mainScreen()
+        self.chip.setFrame_display_(_chip_frame(screen, self.chip.frame().origin.y), True)
+        o = self.chip.frame().origin
+        self.board.persist.set_pref("chip_pos", [o.x, o.y])
+
+    @objc.python_method
+    def chip_hover(self, root, x):
+        if self.popover.isShown():
+            return
+        if root != self.chip_root:
+            self.chip_root, self.chip_x = root, x
+            self._sync_chip_list()
+
+    @objc.python_method
+    def hide_chip_list(self):
+        self.chip_root = None
+        self.chip.removeChildWindow_(self.chip_list_panel)
+        self.chip_list_panel.orderOut_(None)
+
+    @objc.python_method
+    def _sync_chip_list(self):
+        a = next((a for a in self.chip_view.agents if a["root"] == self.chip_root), None) if self.snap else None
+        rows = chip.rows(self.snap, self.chip_root, self.chip_cards) if a else []
+        if a:
+            rows = [{"id": None, "new": a["root"], "icon": "new", "title": "New session", "sub": f"Start Claude in {a['name']}"}] + rows
+        if not rows:
+            self.chip.removeChildWindow_(self.chip_list_panel)
+            self.chip_list_panel.orderOut_(None)
+            return
+        v = self.chip_list_view
+        v.bucket, v.head, v.rows = CHIP, a["name"], [{**r, CHIP: True} for r in rows]
+        h = v.desired_height()
+        frame = self.chip.frame()
+        screen = (self.chip.screen() or NSScreen.mainScreen()).visibleFrame()
+        x = min(max(frame.origin.x + self.chip_x - CHIP_LIST_W / 2, screen.origin.x),
+                screen.origin.x + screen.size.width - CHIP_LIST_W)
+        y = frame.origin.y + CHIP_H + 4
+        if y + h > screen.origin.y + screen.size.height:
+            y = frame.origin.y - 4 - h
+        self.chip_list_panel.setFrame_display_(NSMakeRect(x, y, CHIP_LIST_W, h), True)
+        v.setNeedsDisplay_(True)
+        if self.chip_list_panel.parentWindow() is None:
+            self.chip.addChildWindow_ordered_(self.chip_list_panel, NSWindowAbove)
+
+    @objc.python_method
+    def chip_clicked(self, root):
+        self.hide_chip_list()
+        self._show_board(self.chip_view)
+        self.vc.show_agent(root)
 
     def didWake_(self, _note):
         telegram.woke()
@@ -806,9 +1128,10 @@ class AppDelegate(NSObject):
 
     def hoverCheck_(self, _):
         p = NSEvent.mouseLocation()
-        if NSPointInRect(p, self.badge.frame()) or (self.list_panel.isVisible() and NSPointInRect(p, self.list_panel.frame())):
-            return
-        self.hide_list()
+        if not (NSPointInRect(p, self.badge.frame()) or (self.list_panel.isVisible() and NSPointInRect(p, self.list_panel.frame()))):
+            self.hide_list()
+        if not (NSPointInRect(p, self.chip.frame()) or (self.chip_list_panel.isVisible() and NSPointInRect(p, self.chip_list_panel.frame()))):
+            self.hide_chip_list()
 
     @objc.python_method
     def hide_list(self):
@@ -854,10 +1177,14 @@ class AppDelegate(NSObject):
         if row.get("inert"):
             return
         self.hide_list()
+        self.hide_chip_list()
+        if row.get("new"):
+            self._start_session(row["new"])
+            return
         if row.get("session"):
             self._open_session(row["session"])
             return
-        self._show_board(self.badge_view)
+        self._show_board(self.chip_view if row.get(CHIP) else self.badge_view)
         if row["id"]:
             self.vc.select(row["id"])
 
@@ -869,12 +1196,22 @@ class AppDelegate(NSObject):
         self.board.persist.star(s["id"], not s["starred"])
         self.board.invalidate()
         self.hide_list()
+        self.hide_chip_list()
 
     @objc.python_method
     def _open_session(self, s):
         prefs = self.board.persist.data["prefs"]
         threading.Thread(target=terminal.open_session, daemon=True,
                          args=(s, terminal.terminal_for(prefs), False, terminal.remote_for(prefs))).start()
+
+    @objc.python_method
+    def _start_session(self, cwd):
+        prefs = self.board.persist.data["prefs"]
+        mode = (prefs.get("last_start") or {}).get("permission_mode") or "acceptEdits"
+        self.board.persist.set_pref("last_start", {"cwd": cwd, "permission_mode": mode, "at": time.time()})
+        threading.Thread(target=terminal.start, daemon=True, kwargs={
+            "cwd": cwd, "permission_mode": mode, "launcher": prefs.get("launcher", "Terminal"),
+            "remote": terminal.remote_for(prefs)}).start()
 
     @objc.python_method
     def _notifications_on(self):
@@ -1043,6 +1380,16 @@ class AppDelegate(NSObject):
             self.badge.orderOut_(None)
         self.vc.refresh()
 
+    def toggleChip_(self, _):
+        on = not self.board.persist.data["prefs"].get("chip")
+        self.board.persist.set_pref("chip", on)
+        if on:
+            self._restore_chip()
+            self.chip.orderFrontRegardless()
+        else:
+            self.hide_chip_list()
+            self.chip.orderOut_(None)
+
     def statusClicked_(self, sender):
         ev = NSApp.currentEvent()
         if ev is not None and ev.type() == 3:   # right mouse down
@@ -1064,6 +1411,9 @@ class AppDelegate(NSObject):
         badge = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Floating badge", "toggleBadge:", "")
         badge.setState_(1 if self.board.persist.data["prefs"].get("badge", True) else 0)
         menu.addItem_(badge)
+        team = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Team chip", "toggleChip:", "")
+        team.setState_(1 if self.board.persist.data["prefs"].get("chip") else 0)
+        menu.addItem_(team)
         pinned = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Keep board open", "togglePinned:", "")
         pinned.setState_(1 if self._pinned() else 0)
         menu.addItem_(pinned)

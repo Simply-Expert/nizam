@@ -383,6 +383,8 @@ const NATIVE = window.webkit && window.webkit.messageHandlers && window.webkit.m
 let SETTINGS = new URLSearchParams(location.search).get('settings') === '1', SET = null, _setKey = null;
 function pageFor(id) { return /^[fq]:/.test(id) ? {agent: null, area: null} : {home: true}; }
 function nizamSelect(id) { SEL = pageFor(id); CUR = id; detailOpen = true; SETTINGS = false; refresh(true); }
+function nizamAgent(root) { SEL = {agent: root, area: null}; save('sel', SEL); CUR = null; detailOpen = false; SETTINGS = false; refresh(true); }
+if (new URLSearchParams(location.search).get('agent')) SEL = {agent: new URLSearchParams(location.search).get('agent'), area: null};
 
 async function api(path, body) {
   const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)} : {});
