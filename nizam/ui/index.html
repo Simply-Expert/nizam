@@ -377,11 +377,12 @@ function save(k, v) { try { localStorage.setItem('nizam.'+k, JSON.stringify(v));
 
 let DATA = null, SEL = load('sel', {home: true}), CUR = new URLSearchParams(location.search).get('select'), DRAG = null;
 let showDone = load('showDone', false), folded = load('folded', []), _lastKey = null, detailOpen = !!CUR;
-if (CUR) SEL = {agent: null, area: null};
+if (CUR) SEL = pageFor(CUR);
 if (SEL.triage) SEL = {home: true};
 const NATIVE = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nizam;
 let SETTINGS = new URLSearchParams(location.search).get('settings') === '1', SET = null, _setKey = null;
-function nizamSelect(id) { SEL = {agent: null, area: null}; CUR = id; detailOpen = true; SETTINGS = false; refresh(true); }
+function pageFor(id) { return /^[fq]:/.test(id) ? {agent: null, area: null} : {home: true}; }
+function nizamSelect(id) { SEL = pageFor(id); CUR = id; detailOpen = true; SETTINGS = false; refresh(true); }
 
 async function api(path, body) {
   const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)} : {});
